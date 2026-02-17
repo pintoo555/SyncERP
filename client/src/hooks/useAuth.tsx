@@ -4,6 +4,7 @@ import { api } from '../api/client';
 export interface User {
   userId: number;
   name: string;
+  username: string;
   email: string;
   departmentId: number | null;
   departmentName?: string | null;
@@ -14,7 +15,7 @@ export interface User {
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -40,8 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    await api.post<{ success: boolean }>('/api/auth/login', { email, password });
+  const login = useCallback(async (username: string, password: string) => {
+    await api.post<{ success: boolean }>('/api/auth/login', { username, password });
     await refresh();
   }, [refresh]);
 

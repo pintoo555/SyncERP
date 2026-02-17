@@ -1,16 +1,25 @@
 const KEY = 'chat_settings';
+const FLOATING_POSITION_KEY = 'chat_floating_position';
 
 export interface ChatSettings {
   soundEnabled: boolean;
   notifyEnabled: boolean;
   /** Service code of the AI model to use for chat improvement (e.g. OPENAI, CLAUDE). Empty = use default. */
   aiServiceCode: string;
+  /** Show floating chat widget on all pages (user preference). */
+  floatingWidgetEnabled: boolean;
+}
+
+export interface FloatingChatPosition {
+  x: number;
+  y: number;
 }
 
 const defaults: ChatSettings = {
   soundEnabled: true,
   notifyEnabled: false,
   aiServiceCode: '',
+  floatingWidgetEnabled: true,
 };
 
 export function getChatSettings(): ChatSettings {
@@ -22,6 +31,7 @@ export function getChatSettings(): ChatSettings {
       soundEnabled: parsed.soundEnabled ?? defaults.soundEnabled,
       notifyEnabled: parsed.notifyEnabled ?? defaults.notifyEnabled,
       aiServiceCode: typeof parsed.aiServiceCode === 'string' ? parsed.aiServiceCode : defaults.aiServiceCode,
+      floatingWidgetEnabled: parsed.floatingWidgetEnabled ?? defaults.floatingWidgetEnabled,
     };
   } catch {
     return { ...defaults };
@@ -33,6 +43,29 @@ export function setChatSettings(settings: Partial<ChatSettings>): void {
   const next = { ...current, ...settings };
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
+    if ('floatingWidgetEnabled' in settings) {
+      window.dispatchEvent(new CustomEvent('chat-settings-changed'));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function getFloatingChatPosition(): FloatingChatPosition | null {
+  try {
+    const raw = localStorage.getItem(FLOATING_POSITION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { x?: number; y?: number };
+    if (typeof parsed.x !== 'number' || typeof parsed.y !== 'number') return null;
+    return { x: parsed.x, y: parsed.y };
+  } catch {
+    return null;
+  }
+}
+
+export function setFloatingChatPosition(pos: FloatingChatPosition): void {
+  try {
+    localStorage.setItem(FLOATING_POSITION_KEY, JSON.stringify(pos));
   } catch {
     // ignore
   }

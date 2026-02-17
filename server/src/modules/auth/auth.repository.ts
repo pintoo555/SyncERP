@@ -9,12 +9,26 @@ import type { UserRow } from './auth.types';
 const SCHEMA = config.db.schema || 'dbo';
 const USERS = `[${SCHEMA}].[rb_users]`;
 
+/** Find user by login username (used for authentication). */
+export async function findUserByUsername(username: string): Promise<UserRow | null> {
+  const req = await getRequest();
+  const result = await req
+    .input('username', username)
+    .query(`
+      SELECT userid, Name, DepartmentID, Username, Email, [Password], IsActive
+      FROM ${USERS} WHERE Username = @username
+    `);
+  const row = result.recordset[0] as UserRow | undefined;
+  return row ?? null;
+}
+
+/** Legacy: find by email (e.g. if Username not yet set). */
 export async function findUserByEmail(email: string): Promise<UserRow | null> {
   const req = await getRequest();
   const result = await req
     .input('email', email)
     .query(`
-      SELECT userid, Name, DepartmentID, Email, [Password], IsActive
+      SELECT userid, Name, DepartmentID, Username, Email, [Password], IsActive
       FROM ${USERS} WHERE Email = @email
     `);
   const row = result.recordset[0] as UserRow | undefined;

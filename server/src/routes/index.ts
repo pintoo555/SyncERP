@@ -35,6 +35,8 @@ import { accountsRoutes } from '../modules/accounts';
 import { communicationRoutes } from '../modules/communication';
 import { callMatrixRoutes } from '../modules/callMatrix';
 import { cronJobsRoutes } from '../modules/cronJobs';
+import { organizationRoutes } from '../modules/organization';
+import { clientRoutes, industryRoutes } from '../modules/clients';
 
 const router = Router();
 
@@ -68,5 +70,8 @@ router.use('/accounts', accountsRoutes);
 router.use('/communication', communicationRoutes);
 router.use('/call-matrix', callMatrixRoutes);
 router.use('/cron-jobs', cronJobsRoutes);
+router.use('/organization', organizationRoutes);
+router.use('/clients', clientRoutes);
+router.use('/industries', industryRoutes);
 
 export default router;

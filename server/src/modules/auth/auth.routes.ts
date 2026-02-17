@@ -12,7 +12,7 @@ const loginLimiter = rateLimit({
   max: config.rateLimit.loginMax,
   message: { success: false, error: 'Too many login attempts' },
   standardHeaders: true,
-  keyGenerator: (req) => (req.body?.email || req.ip || 'unknown').toString(),
+  keyGenerator: (req) => (req.body?.username || req.body?.email || req.ip || 'unknown').toString(),
 });
 
 router.post('/login', loginLimiter, authController.login);

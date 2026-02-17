@@ -21,6 +21,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { optionalAuth } from './middleware/auth';
 import { sessionTracker } from './middleware/sessionTracker';
 import { checkRevokedSession } from './middleware/checkRevokedSession';
+import { branchContext } from './shared/middleware/branchContext';
 
 import apiRoutes from './routes';
 import { startScheduler } from './modules/cronJobs';
@@ -47,6 +48,9 @@ app.use('/api', optionalAuth);
 app.use('/api', sessionTracker);
 // If this request's session was revoked (signed out from another device), return 401 and clear cookie
 app.use('/api', checkRevokedSession);
+
+// Branch context: reads X-Branch-Id header and attaches to request
+app.use(branchContext);
 
 // API routes (central loader)
 app.use('/api', apiRoutes);

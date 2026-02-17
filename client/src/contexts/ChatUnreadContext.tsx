@@ -63,13 +63,17 @@ export function ChatUnreadProvider({ children }: { children: React.ReactNode }) 
     const onMessage = (payload: { senderUserId: number; receiverUserId: number; senderName: string; messageText: string }) => {
       const isForMe = payload.receiverUserId === myId && payload.senderUserId !== myId;
       if (!isForMe) return;
-      refetch();
       const onChatPage = location.pathname === '/chat';
-      const tabHidden = document.visibilityState === 'hidden';
-      if (onChatPage && !tabHidden) return; // Chat page handles sound/notification when visible
+      // Use document.hasFocus() so we also detect when the browser window is behind other apps
+      const windowFocused = document.hasFocus();
+      // When chat page is focused, it handles mark-read + refetch after the server processes it.
+      // Calling refetch() here would race with mark-read and return a stale count.
+      if (onChatPage && windowFocused) return;
+      refetch();
       const settings = getChatSettings();
       if (settings.soundEnabled) playChatSound();
-      if (settings.notifyEnabled && tabHidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      // Show browser notification when window not focused OR tab is hidden
+      if (settings.notifyEnabled && !windowFocused && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         try {
           const senderUserId = payload.senderUserId;
           const n = new Notification(payload.senderName, { body: payload.messageText, tag: `chat-${senderUserId}` });

@@ -252,11 +252,12 @@ export async function updateLastSeen(userId: number): Promise<void> {
   }
 }
 
-/** Messages between me and another user (ordered by SentAt asc for display). */
+/** Messages between me and another user (ordered by SentAt asc for display). Returns latest `limit` messages, or older messages when `beforeMessageId` is set. */
 export async function getMessages(
   myUserId: number,
   otherUserId: number,
-  limit: number = 100
+  limit: number = 40,
+  beforeMessageId?: number | null
 ): Promise<ChatMessageRow[]> {
   await ensureAttachmentColumn();
   await ensureChatActionsSchema();
@@ -324,13 +325,18 @@ export async function getMessages(
     };
     return out;
   };
+  const topN = Math.min(limit, 500);
+  const beforeClause = beforeMessageId != null && beforeMessageId > 0 ? 'AND m.MessageID < @beforeMessageId' : '';
   let messages: ChatMessageRow[] = [];
   try {
-    const result = await req
+    let reqWithInputs = req
       .input('userId1', myUserId)
-      .input('userId2', otherUserId)
-      .query(`
-      SELECT TOP (${Math.min(limit, 500)})
+      .input('userId2', otherUserId);
+    if (beforeMessageId != null && beforeMessageId > 0) {
+      reqWithInputs = reqWithInputs.input('beforeMessageId', beforeMessageId);
+    }
+    const result = await reqWithInputs.query(`
+      SELECT TOP (${topN})
              m.MessageID AS messageId, m.SenderUserID AS senderUserId, m.ReceiverUserID AS receiverUserId,
              m.MessageText AS messageText, CONVERT(NVARCHAR(19), m.SentAt, 120) AS sentAt,
              CONVERT(NVARCHAR(19), m.DeliveredAt, 120) AS deliveredAt,
@@ -351,21 +357,20 @@ export async function getMessages(
       LEFT JOIN dbo.react_ChatStarred st ON st.MessageID = m.MessageID AND st.UserID = @userId1
       LEFT JOIN dbo.react_ChatPinned pin ON pin.MessageID = m.MessageID AND pin.UserID = @userId1 AND pin.PartnerID = @userId2
       WHERE ((m.SenderUserID = @userId1 AND m.ReceiverUserID = @userId2) OR (m.SenderUserID = @userId2 AND m.ReceiverUserID = @userId1))
-        AND h.MessageID IS NULL
-      ORDER BY m.SentAt ASC
+        AND h.MessageID IS NULL ${beforeClause}
+      ORDER BY m.SentAt DESC
     `);
     const rows = (result.recordset || []) as Record<string, unknown>[];
-    messages = rows.map(mapRow);
+    messages = rows.map(mapRow).reverse();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('DeliveredAt') || msg.includes('ReadAt') || msg.includes('AttachmentFileID') || msg.includes('AccessToken') || msg.includes('ReplyToMessageID') || msg.includes('DeletedAt') || msg.includes('react_ChatMessageHidden') || msg.includes('react_ChatStarred') || msg.includes('react_ChatPinned') || msg.includes('Invalid column') || msg.includes('Invalid object')) {
       const req2 = await getRequest();
       try {
-        const withAttachment = await req2
-          .input('userId1', myUserId)
-          .input('userId2', otherUserId)
-          .query(`
-          SELECT TOP (${Math.min(limit, 500)})
+        let req2Input = req2.input('userId1', myUserId).input('userId2', otherUserId);
+        if (beforeMessageId != null && beforeMessageId > 0) req2Input = req2Input.input('beforeMessageId', beforeMessageId);
+        const withAttachment = await req2Input.query(`
+          SELECT TOP (${topN})
                  m.MessageID AS messageId, m.SenderUserID AS senderUserId, m.ReceiverUserID AS receiverUserId,
                  m.MessageText AS messageText, CONVERT(NVARCHAR(19), m.SentAt, 120) AS sentAt,
                  u1.Name AS senderName, u2.Name AS receiverName,
@@ -374,31 +379,28 @@ export async function getMessages(
           INNER JOIN rb_users u1 ON u1.userid = m.SenderUserID
           INNER JOIN rb_users u2 ON u2.userid = m.ReceiverUserID
           LEFT JOIN dbo.react_FileStore f ON f.FileID = m.AttachmentFileID
-          WHERE (m.SenderUserID = @userId1 AND m.ReceiverUserID = @userId2)
-             OR (m.SenderUserID = @userId2 AND m.ReceiverUserID = @userId1)
-          ORDER BY m.SentAt ASC
+          WHERE ((m.SenderUserID = @userId1 AND m.ReceiverUserID = @userId2) OR (m.SenderUserID = @userId2 AND m.ReceiverUserID = @userId1)) ${beforeClause}
+          ORDER BY m.SentAt DESC
         `);
         const rows = (withAttachment.recordset || []) as Record<string, unknown>[];
-        messages = rows.map((r) => ({ ...mapRow(r), deliveredAt: null, readAt: null }));
+        messages = rows.map((r) => ({ ...mapRow(r), deliveredAt: null, readAt: null })).reverse();
       } catch {
         const req3 = await getRequest();
-        const fallback = await req3
-          .input('userId1', myUserId)
-          .input('userId2', otherUserId)
-          .query(`
-          SELECT TOP (${Math.min(limit, 500)})
+        let req3Input = req3.input('userId1', myUserId).input('userId2', otherUserId);
+        if (beforeMessageId != null && beforeMessageId > 0) req3Input = req3Input.input('beforeMessageId', beforeMessageId);
+        const fallback = await req3Input.query(`
+          SELECT TOP (${topN})
                  m.MessageID AS messageId, m.SenderUserID AS senderUserId, m.ReceiverUserID AS receiverUserId,
                  m.MessageText AS messageText, CONVERT(NVARCHAR(19), m.SentAt, 120) AS sentAt,
                  u1.Name AS senderName, u2.Name AS receiverName
           FROM ${table} m
           INNER JOIN rb_users u1 ON u1.userid = m.SenderUserID
           INNER JOIN rb_users u2 ON u2.userid = m.ReceiverUserID
-          WHERE (m.SenderUserID = @userId1 AND m.ReceiverUserID = @userId2)
-             OR (m.SenderUserID = @userId2 AND m.ReceiverUserID = @userId1)
-          ORDER BY m.SentAt ASC
+          WHERE ((m.SenderUserID = @userId1 AND m.ReceiverUserID = @userId2) OR (m.SenderUserID = @userId2 AND m.ReceiverUserID = @userId1)) ${beforeClause}
+          ORDER BY m.SentAt DESC
         `);
         const rows = (fallback.recordset || []) as Record<string, unknown>[];
-        messages = rows.map((r) => ({ ...mapRow(r), deliveredAt: null, readAt: null }));
+        messages = rows.map((r) => ({ ...mapRow(r), deliveredAt: null, readAt: null })).reverse();
       }
     } else {
       throw err;

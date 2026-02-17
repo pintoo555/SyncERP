@@ -13,6 +13,7 @@ import { auditListQuerySchema } from '../../validators/auditSchemas';
 import { getRequest } from '../../config/db';
 import { config } from '../../config/env';
 import { getPermissionsForUser } from '../rbac';
+import { emitOrgChanged } from '../../realtime/setup';
 
 const SCHEMA = config.db.schema || 'dbo';
 const USERS = `[${SCHEMA}].[rb_users]`;
@@ -39,14 +40,22 @@ export async function listDesignations(req: AuthRequest, res: Response, next: Ne
   }
 }
 
-/** List employees (HRMS.VIEW). Optional search, departmentId, isActive, orgDesignationId (utbl_Org_Designation). */
+/** List employees (HRMS.VIEW). Optional search, departmentId, isActive, orgDesignationId, branchId. branchId=all = no branch filter; number = filter by that branch; omitted = use X-Branch-Id header. */
 export async function listEmployees(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
     const departmentId = req.query.departmentId != null ? Number(req.query.departmentId) : undefined;
     const isActive = req.query.isActive === '1' ? true : req.query.isActive === '0' ? false : undefined;
     const orgDesignationId = req.query.orgDesignationId != null ? Number(req.query.orgDesignationId) : undefined;
-    const data = await hrmsService.listEmployees(search, departmentId, isActive, orgDesignationId);
+    let branchId: number | undefined;
+    if (req.query.branchId === 'all' || req.query.branchId === '') {
+      branchId = undefined; // show all branches
+    } else if (req.query.branchId != null && Number(req.query.branchId) > 0) {
+      branchId = Number(req.query.branchId);
+    } else {
+      branchId = (req as any).branchId as number | undefined;
+    }
+    const data = await hrmsService.listEmployees(search, departmentId, isActive, orgDesignationId, branchId);
     res.json({ success: true, data, total: data.length });
   } catch (e) {
     next(e);
@@ -66,16 +75,17 @@ export async function getEmployee(req: AuthRequest, res: Response, next: NextFun
     }
     const reqDb = await getRequest();
     const userResult = await reqDb.input('userId', userId).query(`
-      SELECT u.userid AS userId, u.Name AS name, u.Email AS email, u.DepartmentID AS departmentId
+      SELECT u.userid AS userId, u.Name AS name, u.Username AS username, u.Email AS email, u.DepartmentID AS departmentId
       FROM ${USERS} u WHERE u.userid = @userId
     `);
-    const userRow = userResult.recordset[0] as { userId: number; name: string; email: string; departmentId: number | null } | undefined;
+    const userRow = userResult.recordset[0] as { userId: number; name: string; username: string | null; email: string; departmentId: number | null } | undefined;
     if (!userRow) return next(new AppError(404, 'User not found'));
-    const [profile, family, bank, contactNumbersRaw] = await Promise.all([
+    const [profile, family, bank, contactNumbersRaw, branches] = await Promise.all([
       hrmsService.getEmployeeProfile(userId),
       hrmsService.listFamily(userId),
       hrmsService.getEmployeeBank(userId),
       hrmsService.listContactNumbers(userId).catch(() => []),
+      hrmsService.getEmployeeBranches(userId),
     ]);
     const contactNumbers = contactNumbersRaw ?? [];
     const departmentName = userRow.departmentId != null
@@ -92,6 +102,7 @@ export async function getEmployee(req: AuthRequest, res: Response, next: NextFun
       family: family ?? [],
       bank: bank ?? null,
       contactNumbers: contactNumbers ?? [],
+      branches: branches ?? [],
     });
   } catch (e) {
     next(e);
@@ -132,13 +143,17 @@ export async function updateProfile(req: AuthRequest, res: Response, next: NextF
       photoUrl: typeof body.photoUrl === 'string' ? body.photoUrl : undefined,
       emergencyContact: typeof body.emergencyContact === 'string' ? body.emergencyContact : undefined,
       emergencyPhone: typeof body.emergencyPhone === 'string' ? body.emergencyPhone : undefined,
+      internalEmail: typeof body.internalEmail === 'string' ? body.internalEmail : undefined,
+      internalEmailPassword: typeof body.internalEmailPassword === 'string' ? body.internalEmailPassword : undefined,
     };
     await hrmsService.upsertEmployeeProfile(userId, profilePayload);
     if (canEditAll) {
       const departmentId = body.departmentId !== undefined ? (body.departmentId === null ? null : Number(body.departmentId)) : undefined;
       const name = typeof body.name === 'string' ? body.name : undefined;
-      if (departmentId !== undefined || name !== undefined) {
-        await hrmsService.updateUserDepartmentAndName(userId, { departmentId, name });
+      const email = typeof body.email === 'string' ? body.email : body.email === null ? null : undefined;
+      const username = typeof body.username === 'string' ? body.username : body.username === null ? null : undefined;
+      if (departmentId !== undefined || name !== undefined || email !== undefined || username !== undefined) {
+        await hrmsService.updateUserDepartmentAndName(userId, { departmentId, name, email, username });
       }
     } else if (typeof body.name === 'string' && body.name.trim()) {
       await hrmsService.updateUserDepartmentAndName(userId, { name: body.name.trim() });
@@ -442,14 +457,16 @@ export async function upsertBank(req: AuthRequest, res: Response, next: NextFunc
   }
 }
 
-/** List users for search (HRMS.VIEW). Returns active users with WhatsApp fields. Strong search: name, email, employee code, mobile, phone, department name. */
+/** List users for search (HRMS.VIEW). Returns active users with WhatsApp fields. Branch-filtered via X-Branch-Id header. */
 export async function listUsersForSearch(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 100) : '';
+    const branchId = (req as any).branchId as number | undefined;
     const reqDb = await getRequest();
-    const result = await reqDb
-      .input('search', search ? `%${search}%` : null)
-      .query(`
+    reqDb.input('search', search ? `%${search}%` : null);
+    reqDb.input('branchId', branchId ?? null);
+    const USER_BRANCH_TBL = `[${SCHEMA}].[utbl_UserBranchAccess]`;
+    const result = await reqDb.query(`
         SELECT u.userid AS userId, u.Name AS name, u.Email AS email, u.DepartmentID AS departmentId,
                d.DepartmentName AS departmentName,
                p.WhatsAppNumber AS whatsAppNumber, p.WhatsAppVerifiedAt AS whatsAppVerifiedAt,
@@ -461,6 +478,7 @@ export async function listUsersForSearch(req: AuthRequest, res: Response, next: 
           OR u.Name LIKE @search OR u.Email LIKE @search
           OR p.EmployeeCode LIKE @search OR p.Mobile LIKE @search OR p.Phone LIKE @search
           OR d.DepartmentName LIKE @search)
+          AND (@branchId IS NULL OR EXISTS (SELECT 1 FROM ${USER_BRANCH_TBL} ba WHERE ba.UserId = u.userid AND ba.BranchId = @branchId AND ba.IsActive = 1))
         ORDER BY u.Name
       `);
     const data = (result.recordset || []) as {
@@ -501,129 +519,13 @@ export async function getUserActivity(req: AuthRequest, res: Response, next: Nex
   }
 }
 
-// --- Organization structure (utbl_Org_*). HRMS.EDIT for mutations, HRMS.VIEW for read. ---
-
-export async function listOrgDepartments(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const activeOnly = req.query.activeOnly === '1';
-    const data = await hrmsOrgService.listOrgDepartments(activeOnly);
-    res.json({ success: true, data });
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function createOrgDepartment(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const perms = await getPermissionsForUser(req.user!.userId!);
-    if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
-    const body = req.body as { departmentCode?: string; departmentName?: string; sortOrder?: number };
-    const id = await hrmsOrgService.createOrgDepartment({
-      departmentCode: body.departmentCode ?? '',
-      departmentName: body.departmentName ?? '',
-      sortOrder: body.sortOrder,
-    });
-    logAuditFromRequest(req, { eventType: 'create', entityType: 'utbl_Org_Department', entityId: String(id) });
-    res.status(201).json({ success: true, id, data: await hrmsOrgService.getOrgDepartment(id) });
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function updateOrgDepartment(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const perms = await getPermissionsForUser(req.user!.userId!);
-    if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
-    const id = Number((req.params as { id: string }).id);
-    if (!Number.isInteger(id)) return next(new AppError(400, 'Invalid id'));
-    const body = req.body as { departmentCode?: string; departmentName?: string; isActive?: boolean; sortOrder?: number };
-    await hrmsOrgService.updateOrgDepartment(id, body);
-    logAuditFromRequest(req, { eventType: 'update', entityType: 'utbl_Org_Department', entityId: String(id) });
-    res.json({ success: true, data: await hrmsOrgService.getOrgDepartment(id) });
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function deleteOrgDepartment(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const perms = await getPermissionsForUser(req.user!.userId!);
-    if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
-    const id = Number((req.params as { id: string }).id);
-    if (!Number.isInteger(id)) return next(new AppError(400, 'Invalid id'));
-    const ok = await hrmsOrgService.deleteOrgDepartment(id);
-    if (!ok) return next(new AppError(404, 'Department not found'));
-    logAuditFromRequest(req, { eventType: 'delete', entityType: 'utbl_Org_Department', entityId: String(id) });
-    res.json({ success: true });
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function listOrgDesignations(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const departmentId = req.query.departmentId != null ? Number(req.query.departmentId) : undefined;
-    if (departmentId == null || !Number.isInteger(departmentId)) return next(new AppError(400, 'departmentId required'));
-    const data = await hrmsOrgService.listOrgDesignations(departmentId);
-    res.json({ success: true, data });
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function createOrgDesignation(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const perms = await getPermissionsForUser(req.user!.userId!);
-    if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
-    const body = req.body as { departmentId: number; name: string; level: number; isLeader?: boolean; sortOrder?: number };
-    const id = await hrmsOrgService.createOrgDesignation({
-      departmentId: body.departmentId,
-      name: body.name ?? '',
-      level: body.level ?? 1,
-      isLeader: body.isLeader ?? false,
-      sortOrder: body.sortOrder,
-    });
-    logAuditFromRequest(req, { eventType: 'create', entityType: 'utbl_Org_Designation', entityId: String(id) });
-    res.status(201).json({ success: true, id, data: (await hrmsOrgService.listOrgDesignations(body.departmentId)).find((d) => d.id === id) });
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function updateOrgDesignation(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const perms = await getPermissionsForUser(req.user!.userId!);
-    if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
-    const id = Number((req.params as { id: string }).id);
-    if (!Number.isInteger(id)) return next(new AppError(400, 'Invalid id'));
-    const body = req.body as { name?: string; level?: number; isLeader?: boolean; sortOrder?: number };
-    await hrmsOrgService.updateOrgDesignation(id, body);
-    logAuditFromRequest(req, { eventType: 'update', entityType: 'utbl_Org_Designation', entityId: String(id) });
-    res.json({ success: true });
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function deleteOrgDesignation(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const perms = await getPermissionsForUser(req.user!.userId!);
-    if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
-    const id = Number((req.params as { id: string }).id);
-    if (!Number.isInteger(id)) return next(new AppError(400, 'Invalid id'));
-    const ok = await hrmsOrgService.deleteOrgDesignation(id);
-    if (!ok) return next(new AppError(404, 'Designation not found'));
-    logAuditFromRequest(req, { eventType: 'delete', entityType: 'utbl_Org_Designation', entityId: String(id) });
-    res.json({ success: true });
-  } catch (e) {
-    next(e);
-  }
-}
+// Department and Designation CRUD moved to organization module (organization.controller.ts)
 
 export async function listOrgTeams(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const departmentId = req.query.departmentId != null ? Number(req.query.departmentId) : undefined;
-    const data = await hrmsOrgService.listOrgTeams(departmentId);
+    const branchId = (req as any).branchId as number | undefined;
+    const data = await hrmsOrgService.listOrgTeams(departmentId, false, branchId);
     res.json({ success: true, data });
   } catch (e) {
     next(e);
@@ -646,15 +548,20 @@ export async function createOrgTeam(req: AuthRequest, res: Response, next: NextF
   try {
     const perms = await getPermissionsForUser(req.user!.userId!);
     if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
-    const body = req.body as { departmentId: number; name: string; parentTeamId?: number | null; leadUserId?: number | null; level: number };
+    const body = req.body as { departmentId: number; name: string; parentTeamId?: number | null; leadUserId?: number | null; level: number; icon?: string | null; themeColor?: string | null; branchId?: number | null };
+    const branchId = body.branchId ?? (req as any).branchId ?? null;
     const id = await hrmsOrgService.createOrgTeam({
       departmentId: body.departmentId,
       name: body.name ?? '',
       parentTeamId: body.parentTeamId,
       leadUserId: body.leadUserId,
       level: body.level ?? 1,
+      icon: body.icon,
+      themeColor: body.themeColor,
+      branchId,
     });
     logAuditFromRequest(req, { eventType: 'create', entityType: 'utbl_Org_Team', entityId: String(id) });
+    emitOrgChanged({ action: 'create', entityType: 'team', entityId: id });
     res.status(201).json({ success: true, id, data: await hrmsOrgService.getOrgTeam(id) });
   } catch (e) {
     next(e);
@@ -667,9 +574,10 @@ export async function updateOrgTeam(req: AuthRequest, res: Response, next: NextF
     if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return next(new AppError(400, 'Invalid id'));
-    const body = req.body as { name?: string; parentTeamId?: number | null; leadUserId?: number | null; level?: number };
+    const body = req.body as { name?: string; departmentId?: number; parentTeamId?: number | null; leadUserId?: number | null; level?: number; icon?: string | null; themeColor?: string | null };
     await hrmsOrgService.updateOrgTeam(id, body);
     logAuditFromRequest(req, { eventType: 'update', entityType: 'utbl_Org_Team', entityId: String(id) });
+    emitOrgChanged({ action: 'update', entityType: 'team', entityId: id });
     res.json({ success: true, data: await hrmsOrgService.getOrgTeam(id) });
   } catch (e) {
     next(e);
@@ -685,6 +593,7 @@ export async function deleteOrgTeam(req: AuthRequest, res: Response, next: NextF
     const ok = await hrmsOrgService.deleteOrgTeam(id);
     if (!ok) return next(new AppError(404, 'Team not found'));
     logAuditFromRequest(req, { eventType: 'delete', entityType: 'utbl_Org_Team', entityId: String(id) });
+    emitOrgChanged({ action: 'delete', entityType: 'team', entityId: id });
     res.json({ success: true });
   } catch (e) {
     next(e);
@@ -712,6 +621,7 @@ export async function addOrgTeamMember(req: AuthRequest, res: Response, next: Ne
     if (!Number.isInteger(teamId) || !Number.isInteger(userId)) return next(new AppError(400, 'Invalid team id or userId'));
     await hrmsOrgService.assignUserToTeam(userId, teamId);
     logAuditFromRequest(req, { eventType: 'create', entityType: 'utbl_Org_TeamMember', entityId: String(teamId), details: `userId ${userId}` });
+    emitOrgChanged({ action: 'assign', entityType: 'member', entityId: userId });
     res.status(201).json({ success: true });
   } catch (e) {
     next(e);
@@ -729,6 +639,7 @@ export async function moveUserToTeam(req: AuthRequest, res: Response, next: Next
     const result = await hrmsOrgService.moveUserToTeam(userId, toTeamId);
     if (!result.success) return next(new AppError(400, result.error ?? 'Move failed'));
     logAuditFromRequest(req, { eventType: 'update', entityType: 'utbl_Org_TeamMember', entityId: String(userId), details: `moved to team ${toTeamId}` });
+    emitOrgChanged({ action: 'move', entityType: 'member', entityId: userId });
     res.json({ success: true });
   } catch (e) {
     next(e);
@@ -743,8 +654,19 @@ export async function getOrgTree(req: AuthRequest, res: Response, next: NextFunc
     const perms = await getPermissionsForUser(currentUserId);
     const hasHrmsEdit = perms.includes('HRMS.EDIT');
     const teamIdsFilter = await hrmsOrgService.getTeamsForCurrentUser(currentUserId, hasHrmsEdit);
-    const result = await hrmsOrgService.getOrgTree(departmentId, teamIdsFilter ?? undefined);
+    const branchId = (req as any).branchId as number | undefined;
+    const result = await hrmsOrgService.getOrgTree(departmentId, teamIdsFilter ?? undefined, branchId);
     res.json({ success: true, ...result });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function listUnassignedUsers(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const branchId = (req as any).branchId as number | undefined;
+    const data = await hrmsOrgService.listUnassignedUsers(branchId);
+    res.json({ success: true, data });
   } catch (e) {
     next(e);
   }
@@ -760,6 +682,7 @@ export async function recordPromotion(req: AuthRequest, res: Response, next: Nex
     if (!body.toOrgDesignationId || !body.toTeamId || !body.effectiveDate || !body.changeType) return next(new AppError(400, 'toOrgDesignationId, toTeamId, effectiveDate, changeType required'));
     await hrmsOrgService.recordPromotion(userId, body, req.user!.userId!);
     logAuditFromRequest(req, { eventType: 'create', entityType: 'utbl_Org_PromotionHistory', entityId: String(userId), details: body.changeType });
+    emitOrgChanged({ action: 'promotion', entityType: 'member', entityId: userId });
     res.json({ success: true });
   } catch (e) {
     next(e);

@@ -13,6 +13,11 @@ const CHAT_EMOJIS = [
   '🖤', '🤍', '🤎', '💕', '💖', '💗', '💘', '💝', '😺', '😸', '😻', '😼', '😽', '🔥', '⭐', '✨', '💫', '✅', '❌', '❗', '❓',
 ];
 
+/** Initial and load-more page size for messages (recent first, older on scroll). */
+const CHAT_PAGE_SIZE = 40;
+/** Scroll threshold (px from top) to trigger loading older messages. */
+const CHAT_LOAD_OLDER_THRESHOLD = 100;
+
 interface ConversationRow {
   userId: number;
   name: string;
@@ -217,6 +222,7 @@ export default function Chat() {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [messages, setMessages] = useState<ChatMessageRow[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -263,8 +269,16 @@ export default function Chat() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const selectedUserIdRef = useRef<number | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
+  const prevScrollHeightRef = useRef<number | null>(null);
+  const prevScrollTopRef = useRef<number | null>(null);
 
   const uploadingAttachment = uploadQueue.some((i) => i.status === 'uploading' || i.status === 'pending');
+
+  // Keep ref in sync so loadConversations always sees current value
+  selectedUserIdRef.current = selectedUserId;
 
   useEffect(() => {
     if (messageInfoId == null) return;
@@ -337,9 +351,12 @@ export default function Chat() {
       .then((res) => {
         const list = res.data ?? [];
         setConversations(list);
+        const viewingId = selectedUserIdRef.current;
         setUnreadByUserId((prev) => {
           const next = { ...prev };
           list.forEach((c) => {
+            // Skip user we're actively viewing - mark-read may not have been processed yet
+            if (c.userId === viewingId) return;
             const n = Number(c.unreadCount ?? 0);
             if (n > 0) next[c.userId] = Math.max(n, next[c.userId] ?? 0);
           });
@@ -385,7 +402,7 @@ export default function Chat() {
   const refetchMessages = useCallback(() => {
     if (!user || !selectedUserId) return;
     setLoadingMessages(true);
-    api.get<{ success: boolean; data?: ChatMessageRow[] }>(`/api/chat/messages?with=${selectedUserId}`)
+    api.get<{ success: boolean; data?: ChatMessageRow[] }>(`/api/chat/messages?with=${selectedUserId}&limit=${CHAT_PAGE_SIZE}`)
       .then((res) => {
         const raw = res as { data?: unknown[]; success?: boolean };
         const arr = Array.isArray(raw?.data) ? raw.data : (res.data ?? []);
@@ -402,6 +419,7 @@ export default function Chat() {
           );
           return merged;
         });
+        setHasMoreOlder(list.length >= CHAT_PAGE_SIZE);
         api.post('/api/chat/mark-read', { withUserId: selectedUserId })
           .catch(() => {})
           .finally(() => refetchUnread());
@@ -410,38 +428,94 @@ export default function Chat() {
       .finally(() => setLoadingMessages(false));
   }, [user, selectedUserId, refetchUnread]);
 
+  const loadOlderMessages = useCallback(() => {
+    if (!user || !selectedUserId || loadingOlder || !hasMoreOlder) return;
+    const list = messages;
+    if (list.length === 0) return;
+    const firstId = list[0].messageId;
+    const el = messagesAreaRef.current;
+    if (el) {
+      prevScrollHeightRef.current = el.scrollHeight;
+      prevScrollTopRef.current = el.scrollTop;
+    }
+    setLoadingOlder(true);
+    api.get<{ success: boolean; data?: ChatMessageRow[] }>(`/api/chat/messages?with=${selectedUserId}&limit=${CHAT_PAGE_SIZE}&before=${firstId}`)
+      .then((res) => {
+        const raw = res as { data?: unknown[]; success?: boolean };
+        const arr = Array.isArray(raw?.data) ? raw.data : (res.data ?? []);
+        const older = arr.map((m) => normalizeMessageRow(m as Record<string, unknown>));
+        if (older.length === 0) {
+          setHasMoreOlder(false);
+          return;
+        }
+        setMessages((prev) => {
+          const byId = new Map<number, ChatMessageRow>();
+          prev.forEach((m) => byId.set(m.messageId, m));
+          older.forEach((m) => byId.set(m.messageId, m));
+          return Array.from(byId.values()).sort(
+            (a, b) => (parseChatDate(a.sentAt)?.getTime() ?? 0) - (parseChatDate(b.sentAt)?.getTime() ?? 0)
+          );
+        });
+        setHasMoreOlder(older.length >= CHAT_PAGE_SIZE);
+      })
+      .catch(() => setHasMoreOlder(false))
+      .finally(() => setLoadingOlder(false));
+  }, [user, selectedUserId, messages, loadingOlder, hasMoreOlder]);
+
   useEffect(() => {
     if (user?.userId != null) {
       setFavouriteUserIds(new Set(getChatFavourites(user.userId)));
     }
   }, [user?.userId]);
 
-  // When conversation changes (e.g. from notification click or sidebar): clear old messages and load the selected one
+  // When conversation changes (e.g. from notification click, sidebar, or re-click same user): clear old messages and load the selected one
   useEffect(() => {
     if (!user || !selectedUserId) {
       setMessages([]);
+      setHasMoreOlder(true);
       return;
     }
+    let cancelled = false;
     setSendError(null);
     setMessageInfoId(null);
     setMessages([]);
     setLoadingMessages(true);
-    refetchMessages();
-  }, [user, selectedUserId, refetchMessages]);
+    setHasMoreOlder(true);
+    api.get<{ success: boolean; data?: ChatMessageRow[] }>(`/api/chat/messages?with=${selectedUserId}&limit=${CHAT_PAGE_SIZE}`)
+      .then((res) => {
+        if (cancelled) return;
+        const raw = res as { data?: unknown[]; success?: boolean };
+        const arr = Array.isArray(raw?.data) ? raw.data : (res.data ?? []);
+        const list = arr.map((m) => normalizeMessageRow(m as Record<string, unknown>));
+        setMessages(list.sort(
+          (a, b) => (parseChatDate(a.sentAt)?.getTime() ?? 0) - (parseChatDate(b.sentAt)?.getTime() ?? 0)
+        ));
+        setHasMoreOlder(list.length >= CHAT_PAGE_SIZE);
+        api.post('/api/chat/mark-read', { withUserId: selectedUserId })
+          .catch(() => {})
+          .finally(() => refetchUnread());
+      })
+      .catch(() => { if (!cancelled) setMessages([]); })
+      .finally(() => { if (!cancelled) setLoadingMessages(false); });
+    return () => { cancelled = true; };
+    // refreshKey ensures re-click on the same user triggers a reload
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, selectedUserId, refreshKey, refetchUnread]);
 
+  // Instant scroll to bottom when messages load or update (no smooth animation); restore scroll when older messages prepended
   useLayoutEffect(() => {
-    if (messages.length === 0) return;
     const el = messagesAreaRef.current;
     if (!el) return;
-    const setBottom = () => {
-      el.scrollTop = el.scrollHeight;
-    };
-    setBottom();
-    const raf = requestAnimationFrame(() => {
-      setBottom();
-      requestAnimationFrame(setBottom);
-    });
-    return () => cancelAnimationFrame(raf);
+    const prevH = prevScrollHeightRef.current;
+    const prevT = prevScrollTopRef.current;
+    if (prevH != null && prevT != null) {
+      el.scrollTop = prevT + (el.scrollHeight - prevH);
+      prevScrollHeightRef.current = null;
+      prevScrollTopRef.current = null;
+      return;
+    }
+    if (messages.length === 0) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages, loadingMessages]);
 
   useLayoutEffect(() => {
@@ -548,7 +622,9 @@ export default function Chat() {
       }
 
       if (isForMe && senderUserId !== user?.userId) {
-        const shouldCountUnread = document.hidden || selectedUserId !== senderUserId;
+        // Use document.hasFocus() to also detect when browser window is behind other apps
+        const windowFocused = document.hasFocus();
+        const shouldCountUnread = !windowFocused || selectedUserId !== senderUserId;
         if (shouldCountUnread) {
           setUnreadByUserId((prev) => ({
             ...prev,
@@ -557,7 +633,7 @@ export default function Chat() {
         }
         const s = getChatSettings();
         if (s.soundEnabled) playChatSound();
-        if (s.notifyEnabled && typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) {
+        if (s.notifyEnabled && !windowFocused && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
             const n = new Notification(senderName, { body: messageText, tag: `chat-${senderUserId}` });
             n.onclick = () => {
@@ -913,9 +989,10 @@ export default function Chat() {
 
   const fetchMessages = useCallback(() => {
     if (selectedUserId == null) return;
-    api.get<{ success: boolean; data?: ChatMessageRow[] }>(`/api/chat/messages?with=${selectedUserId}`).then((res) => {
+    api.get<{ success: boolean; data?: ChatMessageRow[] }>(`/api/chat/messages?with=${selectedUserId}&limit=${CHAT_PAGE_SIZE}`).then((res) => {
       const list = Array.isArray(res.data) ? res.data : [];
       setMessages(list.map((r) => normalizeMessageRow(r as unknown as Record<string, unknown>)));
+      setHasMoreOlder(list.length >= CHAT_PAGE_SIZE);
     }).catch(() => {});
   }, [selectedUserId]);
 
@@ -1014,6 +1091,7 @@ export default function Chat() {
 
   const handleSelectUser = useCallback((userId: number) => {
     setSelectedUserId(userId);
+    setRefreshKey((k) => k + 1);
     setSendError(null);
     setMobileView('chat');
   }, []);
@@ -1171,6 +1249,20 @@ export default function Chat() {
                       }}
                     />
                     <label className="form-check-label small" htmlFor="chat-notify">Browser notifications</label>
+                  </div>
+                  <div className="form-check">
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id="chat-floating-widget"
+                      checked={settings.floatingWidgetEnabled}
+                      onChange={(e) => {
+                        const v = e.target.checked;
+                        setChatSettings({ floatingWidgetEnabled: v });
+                        setSettings((s) => ({ ...s, floatingWidgetEnabled: v }));
+                      }}
+                    />
+                    <label className="form-check-label small" htmlFor="chat-floating-widget">Show floating chat widget on all pages</label>
                   </div>
                   <div className="mt-2">
                     <label className="form-label small mb-1">AI model for Improve</label>
@@ -1375,7 +1467,16 @@ export default function Chat() {
               )}
 
               {/* ── Messages area (flex-grow, scrollable, fills remaining space) ── */}
-              <div ref={messagesAreaRef} className="chat-messages-area flex-grow-1 overflow-auto px-3 py-2 position-relative" style={{ minHeight: 0 }}>
+              <div
+                ref={messagesAreaRef}
+                className="chat-messages-area flex-grow-1 overflow-auto px-3 py-2 position-relative"
+                style={{ minHeight: 0 }}
+                onScroll={() => {
+                  const el = messagesAreaRef.current;
+                  if (!el || loadingOlder || !hasMoreOlder || messages.length === 0) return;
+                  if (el.scrollTop < CHAT_LOAD_OLDER_THRESHOLD) loadOlderMessages();
+                }}
+              >
                 {loadingMessages ? (
                   <div className="d-flex align-items-center justify-content-center py-5">
                     <div className="spinner-border text-primary" role="status"><span className="visually-hidden">Loading…</span></div>
@@ -1387,6 +1488,12 @@ export default function Chat() {
                   </div>
                 ) : (
                   <>
+                    {loadingOlder && (
+                      <div className="d-flex align-items-center justify-content-center py-2 text-muted small">
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden />
+                        Loading older messages…
+                      </div>
+                    )}
                     {!inChatSearchLower && (() => {
                       const pinnedMessage = messages.find((m) => m.isPinned);
                       if (!pinnedMessage) return null;

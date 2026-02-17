@@ -33,7 +33,7 @@ interface ContactNumber {
 }
 
 interface ProfileData {
-  user: { userId: number; name: string; email: string; departmentId: number | null; departmentName: string | null };
+  user: { userId: number; name: string; username?: string | null; email: string; departmentId: number | null; departmentName: string | null };
   profile: {
     designationId: number | null;
     employeeCode: string | null;
@@ -53,6 +53,7 @@ interface ProfileData {
     aadhar: string | null;
     emergencyContact: string | null;
     emergencyPhone: string | null;
+    internalEmail: string | null;
   } | null;
   designationName: string | null;
   family: { id: number; relation: string; fullName: string; dateOfBirth: string | null; contact: string | null; isDependent: boolean }[];
@@ -106,6 +107,9 @@ export default function HRMSProfile() {
   const [whatsAppError, setWhatsAppError] = useState<string | null>(null);
   const [whatsAppEditing, setWhatsAppEditing] = useState(false);
   const [whatsAppRemoving, setWhatsAppRemoving] = useState(false);
+
+  const [internalEmail, setInternalEmail] = useState('');
+  const [internalEmailPassword, setInternalEmailPassword] = useState('');
 
   const load = useCallback(() => {
     if (userId == null) {
@@ -162,6 +166,9 @@ export default function HRMSProfile() {
           branch: d.bank?.branch ?? '',
           accountType: d.bank?.accountType ?? '',
         });
+        const profileWithInternal = d.profile as { internalEmail?: string | null } | null;
+        setInternalEmail(profileWithInternal?.internalEmail ?? '');
+        setInternalEmailPassword('');
         setDepartments(depts.data ?? []);
         setDesignations(desigs.data ?? []);
       })
@@ -211,6 +218,8 @@ export default function HRMSProfile() {
     });
     if (payload.designationId !== null && payload.designationId !== '') payload.designationId = Number(payload.designationId) || null;
     else payload.designationId = null;
+    payload.internalEmail = internalEmail.trim() || null;
+    if (internalEmailPassword.trim()) payload.internalEmailPassword = internalEmailPassword;
     api.put(`/api/hrms/employees/${userId}/profile`, payload)
       .then(() => {
         setMsg({ type: 'success', text: 'Profile saved successfully.' });
@@ -505,6 +514,24 @@ export default function HRMSProfile() {
                       : null}
                   </div>
               }
+            </div>
+            <h6 className="mt-4 mb-2 text-muted"><i className="ti ti-mail me-1" />Internal email (HmailServer)</h6>
+            <p className="small text-muted mb-2">Email address and password used by the Email module to connect to HmailServer. Leave password blank to keep the current one.</p>
+            <div className="row g-3 mb-3">
+              <div className="col-md-6">
+                <label className="form-label">Internal email address</label>
+                <div className="input-group">
+                  <span className="input-group-text"><i className="ti ti-mail" /></span>
+                  <input type="email" className="form-control" value={internalEmail} onChange={(e) => setInternalEmail(e.target.value)} placeholder="user@company.local" />
+                </div>
+              </div>
+              <div className="col-md-6">
+                <label className="form-label">Internal email password</label>
+                <div className="input-group">
+                  <span className="input-group-text"><i className="ti ti-lock" /></span>
+                  <input type="password" className="form-control" value={internalEmailPassword} onChange={(e) => setInternalEmailPassword(e.target.value)} placeholder="Leave blank to keep current" autoComplete="new-password" />
+                </div>
+              </div>
             </div>
           </div>
           <div>

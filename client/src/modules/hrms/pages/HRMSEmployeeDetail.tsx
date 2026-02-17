@@ -24,8 +24,10 @@ interface ContactNumber {
   number: string;
 }
 
+interface EmployeeBranch { branchId: number; branchName: string; branchCode: string; isDefault: boolean; }
+
 interface ProfileData {
-  user: { userId: number; name: string; email: string; departmentId: number | null; departmentName: string | null };
+  user: { userId: number; name: string; username?: string | null; email: string; departmentId: number | null; departmentName: string | null };
   profile: {
     designationId: number | null;
     orgDesignationId: number | null;
@@ -47,11 +49,13 @@ interface ProfileData {
     aadhar: string | null;
     emergencyContact: string | null;
     emergencyPhone: string | null;
+    internalEmail: string | null;
   } | null;
   designationName: string | null;
   family: { id: number; relation: string; fullName: string; dateOfBirth: string | null; contact: string | null; isDependent: boolean }[];
   bank: { bankName: string | null; accountNumber: string | null; ifsc: string | null; branch: string | null; accountType: string | null } | null;
   contactNumbers: ContactNumber[];
+  branches: EmployeeBranch[];
 }
 
 type TabKey = 'personal' | 'family' | 'bank' | 'promotion';
@@ -92,6 +96,11 @@ export default function HRMSEmployeeDetail() {
   const [whatsAppVerifying, setWhatsAppVerifying] = useState(false);
   const [whatsAppError, setWhatsAppError] = useState<string | null>(null);
 
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [internalEmail, setInternalEmail] = useState('');
+  const [internalEmailPassword, setInternalEmailPassword] = useState('');
+
   const [promotionHistory, setPromotionHistory] = useState<{ id: number; effectiveDate: string; changeType: string; notes: string | null; createdAt: string }[]>([]);
   const [orgDepartments, setOrgDepartments] = useState<OrgDepartment[]>([]);
   const [orgDesignations, setOrgDesignations] = useState<OrgDesignation[]>([]);
@@ -122,7 +131,7 @@ export default function HRMSEmployeeDetail() {
   const load = useCallback(() => {
     if (userId == null || !Number.isInteger(userId)) return;
     setLoading(true);
-    api.get<{ success: boolean; user: ProfileData['user']; profile: ProfileData['profile']; designationName: string | null; family: ProfileData['family']; bank: ProfileData['bank'] }>(`/api/hrms/employees/${userId}`)
+    api.get<{ success: boolean; user: ProfileData['user']; profile: ProfileData['profile']; designationName: string | null; family: ProfileData['family']; bank: ProfileData['bank']; branches?: EmployeeBranch[] }>(`/api/hrms/employees/${userId}`)
       .then((emp) => {
         const d = {
           user: emp.user,
@@ -131,6 +140,7 @@ export default function HRMSEmployeeDetail() {
           family: emp.family ?? [],
           bank: emp.bank,
           contactNumbers: (emp as { contactNumbers?: ContactNumber[] }).contactNumbers ?? [],
+          branches: emp.branches ?? [],
         };
         setData(d);
         setName(d.user.name);
@@ -162,8 +172,12 @@ export default function HRMSEmployeeDetail() {
           branch: d.bank?.branch ?? '',
           accountType: d.bank?.accountType ?? '',
         });
-        const p = d.profile as { whatsAppNumber?: string } | null;
+        const p = d.profile as { whatsAppNumber?: string; internalEmail?: string | null } | null;
         setWhatsAppNumber(p?.whatsAppNumber ?? '');
+        setInternalEmail(p?.internalEmail ?? '');
+        setInternalEmailPassword('');
+        setEmail(d.user.email ?? '');
+        setUsername((d.user as { username?: string | null }).username ?? d.user.email ?? '');
         setWhatsAppOtpSent(false);
         setWhatsAppPhoneForVerify('');
         setWhatsAppOtpCode('');
@@ -221,7 +235,7 @@ export default function HRMSEmployeeDetail() {
     setMsg(null);
     const payload: Record<string, unknown> = { name: name.trim() };
     Object.entries(profileForm).forEach(([k, v]) => {
-      if (k === 'employeeCode') return;
+      if (k === 'employeeCode' || k === 'designationId') return;
       const val = typeof v === 'string' ? v.trim() : v;
       if (k === 'phone' || k === 'mobile' || k === 'emergencyPhone') payload[k] = normalizeIndianPhone(val) || null;
       else if (k === 'pincode') payload[k] = normalizePincode(val) || null;
@@ -232,6 +246,12 @@ export default function HRMSEmployeeDetail() {
     if (canEdit && departmentId !== '') payload.departmentId = Number(departmentId);
     payload.orgDepartmentId = departmentId ? Number(departmentId) : null;
     payload.orgDesignationId = profileForm.designationId?.trim() ? Number(profileForm.designationId) : null;
+    payload.internalEmail = internalEmail.trim() || null;
+    if (internalEmailPassword.trim()) payload.internalEmailPassword = internalEmailPassword;
+    if (canEditHROnlyFields) {
+      payload.email = email.trim() || null;
+      payload.username = username.trim() || null;
+    }
     api.put(`/api/hrms/employees/${userId}/profile`, payload)
       .then(() => {
         setMsg({ type: 'success', text: 'Profile saved.' });
@@ -375,9 +395,28 @@ export default function HRMSEmployeeDetail() {
 
   return (
     <div className="container-fluid">
-      <div className="d-flex align-items-center gap-2 mb-4">
+      <div className="d-flex align-items-center gap-2 mb-2">
         <Link to="/hrms/employees" className="btn btn-sm btn-outline-secondary">← Employees</Link>
         <h4 className="mb-0">{data.user.name} — Employee detail</h4>
+      </div>
+      <div className="card border-0 shadow-sm mb-3">
+        <div className="card-body py-2 px-3 d-flex flex-wrap align-items-center gap-3">
+          <div className="d-flex align-items-center gap-2">
+            <i className="ti ti-building text-primary" />
+            <small className="text-muted fw-semibold">Branch:</small>
+            {data.branches && data.branches.length > 0 ? (
+              data.branches.map((br) => (
+                <span key={br.branchId} className={`badge ${br.isDefault ? 'bg-primary' : 'bg-secondary bg-opacity-25 text-dark border'}`}>
+                  {br.branchName} ({br.branchCode}){br.isDefault && ' ★'}
+                </span>
+              ))
+            ) : (
+              <span className="badge bg-warning bg-opacity-10 text-warning border border-warning">
+                <i className="ti ti-alert-triangle me-1" />Not assigned
+              </span>
+            )}
+          </div>
+        </div>
       </div>
       {msg && (
         <div className={`alert alert-${msg.type} alert-dismissible fade show`} role="alert">
@@ -410,8 +449,14 @@ export default function HRMSEmployeeDetail() {
                 <input type="text" className="form-control form-control-sm" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} />
               </div>
               <div className="col-md-6">
-                <label className="form-label small">Email</label>
-                <input type="text" className="form-control form-control-sm" value={data.user.email} disabled />
+                <label className="form-label small">Email (contact)</label>
+                <input type="text" className="form-control form-control-sm" value={canEditHROnlyFields ? email : data.user.email} onChange={canEditHROnlyFields ? (e) => setEmail(e.target.value) : undefined} disabled={!canEditHROnlyFields} />
+              </div>
+            </div>
+            <div className="row g-2 mb-2">
+              <div className="col-md-6">
+                <label className="form-label small">Username (login)</label>
+                <input type="text" className="form-control form-control-sm" value={canEditHROnlyFields ? username : (data.user as { username?: string | null }).username ?? data.user.email} onChange={canEditHROnlyFields ? (e) => setUsername(e.target.value) : undefined} disabled={!canEditHROnlyFields} />
               </div>
             </div>
             {canEdit && (
@@ -579,6 +624,20 @@ export default function HRMSEmployeeDetail() {
                       <button type="button" className="btn btn-sm btn-primary" onClick={handleAddContactNumber} disabled={contactSaving || !newContactNumber.trim()}>Add</button>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+            {canEdit && (
+              <div className="row g-2 mb-2">
+                <div className="col-12">
+                  <label className="form-label small"><i className="ti ti-mail me-1" />Internal email (HmailServer)</label>
+                  <p className="small text-muted mb-1">Used by the Email module to connect to HmailServer. Leave password blank to keep current.</p>
+                </div>
+                <div className="col-md-6">
+                  <input type="email" className="form-control form-control-sm" value={internalEmail} onChange={(e) => setInternalEmail(e.target.value)} placeholder="user@company.local" />
+                </div>
+                <div className="col-md-6">
+                  <input type="password" className="form-control form-control-sm" value={internalEmailPassword} onChange={(e) => setInternalEmailPassword(e.target.value)} placeholder="Leave blank to keep current" autoComplete="new-password" />
                 </div>
               </div>
             )}

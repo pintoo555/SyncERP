@@ -10,8 +10,9 @@ function isBcryptHash(s: string): boolean {
   return typeof s === 'string' && (s.startsWith('$2a$') || s.startsWith('$2b$') || s.startsWith('$2y$'));
 }
 
-export async function validateLogin(email: string, password: string): Promise<UserRow> {
-  const user = await authRepository.findUserByEmail(email);
+export async function validateLogin(usernameOrEmail: string, password: string): Promise<UserRow> {
+  const trimmed = String(usernameOrEmail).trim();
+  const user = await authRepository.findUserByUsername(trimmed) ?? await authRepository.findUserByEmail(trimmed);
   if (!user) throw new AppError(401, 'Invalid credentials');
   if (!user.IsActive) throw new AppError(401, 'Account is inactive');
   const stored = user.Password ?? '';

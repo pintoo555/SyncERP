@@ -70,7 +70,29 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
   }
 }
 
-/** POST /api/ai-config/:configId/test – test if the API key works (OpenAI-compatible APIs only). */
+/** Test GSTZen API key by verifying a well-known GSTIN (Maharashtra state code). */
+async function testGstZenConfig(row: apiConfigService.ApiConfigRow): Promise<{ ok: boolean; message?: string; error?: string }> {
+  const baseUrl = row.baseUrl?.trim() || 'https://my.gstzen.in/api/gstin-validator/';
+  try {
+    const response = await fetch(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Token': row.apiKey! },
+      body: JSON.stringify({ gstin: '27AAPFU0939F1ZV' }),
+    });
+    if (!response.ok) {
+      return { ok: false, error: `GSTZen returned HTTP ${response.status}` };
+    }
+    const data = await response.json();
+    if (data.status === 0) {
+      return { ok: false, error: data.message || 'GSTZen subscription error' };
+    }
+    return { ok: true, message: `GSTZen API connection successful (valid=${data.valid})` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Connection failed' };
+  }
+}
+
+/** POST /api/ai-config/:configId/test – test if the API key works. Supports OpenAI and GSTZen. */
 export async function testConfig(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const configId = parseInt(String(req.params.configId), 10);
@@ -80,7 +102,17 @@ export async function testConfig(req: AuthRequest, res: Response, next: NextFunc
     if (!row.apiKey?.trim()) {
       return res.json({ success: false, error: 'No API key configured' });
     }
-    const result = await testOpenAIConfig(row);
+
+    // Route test to the correct handler based on service code
+    const code = (row.serviceCode || '').toUpperCase().trim();
+    let result: { ok: boolean; message?: string; error?: string };
+
+    if (code === 'GSTZEN') {
+      result = await testGstZenConfig(row);
+    } else {
+      result = await testOpenAIConfig(row);
+    }
+
     if (result.ok) {
       res.json({ success: true, message: result.message ?? 'API connection successful' });
     } else {

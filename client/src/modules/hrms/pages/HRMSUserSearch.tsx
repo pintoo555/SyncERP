@@ -4,6 +4,7 @@ import { api } from '../../../api/client';
 import { useAppSettings } from '../../../contexts/AppSettingsContext';
 import { formatDateTimeInAppTz } from '../../../utils/dateUtils';
 import { getChatSettings } from '../../../utils/chatSettings';
+import { useBranch } from '../../../contexts/BranchContext';
 
 interface UserOption {
   userId: number;
@@ -33,6 +34,7 @@ interface ActivityRow {
 
 export default function HRMSUserSearch() {
   const { timeZone } = useAppSettings();
+  const { currentBranch } = useBranch();
   const [users, setUsers] = useState<UserOption[]>([]);
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -67,7 +69,7 @@ export default function HRMSUserSearch() {
         setError(e?.message ?? 'Failed to load users. You may need HRMS.VIEW permission.');
       })
       .finally(() => setLoadingUsers(false));
-  }, [search]);
+  }, [search, currentBranch]);
 
   useEffect(() => {
     loadUsers();

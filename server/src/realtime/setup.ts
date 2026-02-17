@@ -182,3 +182,8 @@ export function emitCalendarEventUpdated(payload: { id: number; title: string; s
 export function emitCalendarEventDeleted(eventId: number): void {
   if (realtimeNs) realtimeNs.emit('calendar:event-deleted', { eventId });
 }
+
+/** Broadcast org structure change so all clients viewing the org page can refresh. */
+export function emitOrgChanged(details?: { action?: string; entityType?: string; entityId?: string | number }): void {
+  if (realtimeNs) realtimeNs.emit('org:changed', { ts: Date.now(), ...details });
+}

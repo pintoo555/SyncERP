@@ -11,6 +11,7 @@ import { CalendarSocketProvider } from './contexts/CalendarSocketContext';
 import { AppSettingsProvider } from './contexts/AppSettingsContext';
 import { UserSettingsProvider } from './contexts/UserSettingsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { BranchProvider } from './contexts/BranchContext';
 import { ApiConnectivity } from './components/ApiConnectivity';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppRoutes } from './routes/AppRoutes';
@@ -24,6 +25,7 @@ export default function App() {
             <AppSettingsProvider>
               <UserSettingsProvider>
                 <ThemeProvider>
+                  <BranchProvider>
                   <ChatSocketProvider>
                     <CalendarSocketProvider>
                       <HealthAlertsProvider>
@@ -35,6 +37,7 @@ export default function App() {
                       </HealthAlertsProvider>
                     </CalendarSocketProvider>
                   </ChatSocketProvider>
+                  </BranchProvider>
                 </ThemeProvider>
               </UserSettingsProvider>
             </AppSettingsProvider>

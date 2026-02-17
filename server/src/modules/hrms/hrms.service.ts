@@ -1,9 +1,11 @@
 /**
  * HRMS: Employee profiles, family, bank. Uses rb_users, sync_Department, sync_Designation.
+ * Internal email (HmailServer) stored on profile; password encrypted via mailboxCrypto.
  */
 
 import { getRequest } from '../../config/db';
 import { config } from '../../config/env';
+import { encryptMailboxPassword } from '../../utils/mailboxCrypto';
 import type {
   DepartmentRow,
   DesignationRow,
@@ -24,6 +26,8 @@ const USERS = `[${SCHEMA}].[rb_users]`;
 const DEPT = `[${SCHEMA}].[sync_Department]`;
 const DESIG = `[${SCHEMA}].[sync_Designation]`;
 const ORG_DESIG = `[${SCHEMA}].[utbl_Org_Designation]`;
+const USER_BRANCH = `[${SCHEMA}].[utbl_UserBranchAccess]`;
+const BRANCH = `[${SCHEMA}].[utbl_Branch]`;
 
 export async function listDepartments(): Promise<DepartmentRow[]> {
   const req = await getRequest();
@@ -37,36 +41,43 @@ export async function listDesignations(): Promise<DesignationRow[]> {
   return (result.recordset || []) as DesignationRow[];
 }
 
-export async function listEmployees(search?: string, departmentId?: number, isActive?: boolean, orgDesignationId?: number): Promise<EmployeeListItem[]> {
+export async function listEmployees(search?: string, departmentId?: number, isActive?: boolean, orgDesignationId?: number, branchId?: number): Promise<EmployeeListItem[]> {
   const req = await getRequest();
   req.input('search', search ? `%${search}%` : null);
   req.input('departmentId', departmentId ?? null);
   req.input('isActive', isActive === undefined ? null : (isActive ? 1 : 0));
   req.input('orgDesignationId', orgDesignationId ?? null);
+  req.input('branchId', branchId ?? null);
   const hasSearch = search && search.trim().length > 0 ? 1 : 0;
   const hasDept = departmentId != null ? 1 : 0;
   const hasActiveFilter = isActive !== undefined ? 1 : 0;
   const hasDesignation = orgDesignationId != null ? 1 : 0;
+  const hasBranch = branchId != null ? 1 : 0;
   req.input('hasSearch', hasSearch);
   req.input('hasDept', hasDept);
   req.input('hasActiveFilter', hasActiveFilter);
   req.input('hasDesignation', hasDesignation);
+  req.input('hasBranch', hasBranch);
   const result = await req.query(`
     SELECT u.userid AS userId, u.Name AS name, u.Email AS email, u.DepartmentID AS departmentId,
            d.DepartmentName AS departmentName, p.DesignationID AS designationId,
            COALESCE(orgDesig.Name, des.DesignationType) AS designationType,
            p.OrgDesignationId AS orgDesignationId,
            ISNULL(NULLIF(RTRIM(p.EmployeeCode), ''), 'SYNC' + RIGHT('00' + CAST(u.userid AS VARCHAR(10)), 2)) AS employeeCode,
-           p.Mobile AS mobile, p.JoinDate AS joinDate, u.IsActive AS isActive
+           p.Mobile AS mobile, p.JoinDate AS joinDate, u.IsActive AS isActive,
+           uba_def.BranchId AS branchId, b.BranchName AS branchName
     FROM ${USERS} u
     LEFT JOIN ${DEPT} d ON d.DepartmentID = u.DepartmentID
     LEFT JOIN ${PROFILE} p ON p.UserID = u.userid
     LEFT JOIN ${DESIG} des ON des.DesignationID = p.DesignationID
     LEFT JOIN ${ORG_DESIG} orgDesig ON orgDesig.Id = p.OrgDesignationId
+    LEFT JOIN ${USER_BRANCH} uba_def ON uba_def.UserId = u.userid AND uba_def.IsDefault = 1 AND uba_def.IsActive = 1
+    LEFT JOIN ${BRANCH} b ON b.Id = uba_def.BranchId
     WHERE (0 = @hasSearch OR u.Name LIKE @search OR u.Email LIKE @search OR p.EmployeeCode LIKE @search OR 'SYNC' + RIGHT('00' + CAST(u.userid AS VARCHAR(10)), 2) LIKE @search OR p.Mobile LIKE @search OR p.Phone LIKE @search OR d.DepartmentName LIKE @search)
       AND (0 = @hasDept OR u.DepartmentID = @departmentId)
       AND (0 = @hasActiveFilter OR u.IsActive = @isActive)
       AND (0 = @hasDesignation OR p.OrgDesignationId = @orgDesignationId)
+      AND (0 = @hasBranch OR EXISTS (SELECT 1 FROM ${USER_BRANCH} ba WHERE ba.UserId = u.userid AND ba.BranchId = @branchId AND ba.IsActive = 1))
     ORDER BY u.Name
   `);
   const rows = (result.recordset || []) as (EmployeeListItem & { joinDate: Date | null })[];
@@ -74,6 +85,26 @@ export async function listEmployees(search?: string, departmentId?: number, isAc
     ...r,
     joinDate: r.joinDate ? new Date(r.joinDate).toISOString().slice(0, 10) : null,
     isActive: Boolean(r.isActive),
+    branchId: r.branchId ?? null,
+    branchName: r.branchName ?? null,
+  }));
+}
+
+/** Get all branches an employee has access to. */
+export async function getEmployeeBranches(userId: number): Promise<{ branchId: number; branchName: string; branchCode: string; isDefault: boolean }[]> {
+  const req = await getRequest();
+  const result = await req.input('userId', userId).query(`
+    SELECT uba.BranchId AS branchId, b.BranchName AS branchName, b.BranchCode AS branchCode, uba.IsDefault AS isDefault
+    FROM ${USER_BRANCH} uba
+    INNER JOIN ${BRANCH} b ON b.Id = uba.BranchId
+    WHERE uba.UserId = @userId AND uba.IsActive = 1
+    ORDER BY uba.IsDefault DESC, b.BranchName
+  `);
+  return (result.recordset || []).map((r: any) => ({
+    branchId: r.branchId,
+    branchName: r.branchName,
+    branchCode: r.branchCode,
+    isDefault: Boolean(r.isDefault),
   }));
 }
 
@@ -88,6 +119,7 @@ export async function getEmployeeProfile(userId: number): Promise<EmployeeProfil
              AddressLine1 AS addressLine1, AddressLine2 AS addressLine2, City AS city, State AS state, Pincode AS pincode,
              JoinDate AS joinDate, PAN AS pan, Aadhar AS aadhar, PhotoUrl AS photoUrl,
              EmergencyContact AS emergencyContact, EmergencyPhone AS emergencyPhone,
+             InternalEmail AS internalEmail,
              CreatedAt AS createdAt, UpdatedAt AS updatedAt
       FROM ${PROFILE} WHERE UserID = @userId
     `);
@@ -99,6 +131,7 @@ export async function getEmployeeProfile(userId: number): Promise<EmployeeProfil
              AddressLine1 AS addressLine1, AddressLine2 AS addressLine2, City AS city, State AS state, Pincode AS pincode,
              JoinDate AS joinDate, PAN AS pan, Aadhar AS aadhar, PhotoUrl AS photoUrl,
              EmergencyContact AS emergencyContact, EmergencyPhone AS emergencyPhone,
+             InternalEmail AS internalEmail,
              CreatedAt AS createdAt, UpdatedAt AS updatedAt
       FROM ${PROFILE} WHERE UserID = @userId
     `);
@@ -113,6 +146,7 @@ export async function getEmployeeProfile(userId: number): Promise<EmployeeProfil
     joinDate: row.joinDate ? new Date(row.joinDate).toISOString().slice(0, 10) : null,
     whatsAppNumber: (row as { whatsAppNumber?: string }).whatsAppNumber ?? null,
     whatsAppVerifiedAt: row.whatsAppVerifiedAt ? new Date(row.whatsAppVerifiedAt).toISOString() : null,
+    internalEmail: (row as { internalEmail?: string }).internalEmail ?? null,
     createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
     updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : null,
   };
@@ -146,20 +180,37 @@ export async function upsertEmployeeProfile(
   req.input('photoUrl', (data.photoUrl ?? '').trim().slice(0, 500) || null);
   req.input('emergencyContact', (data.emergencyContact ?? '').trim().slice(0, 100) || null);
   req.input('emergencyPhone', (data.emergencyPhone ?? '').trim().slice(0, 30) || null);
+  const internalEmail = data.internalEmail !== undefined ? (data.internalEmail ?? '').trim().slice(0, 256) || null : null;
+  const internalPasswordPlain = data.internalEmailPassword;
+  let internalPasswordEnc: string | null = null;
+  let hasInternalPassword = 0;
+  if (internalPasswordPlain !== undefined) {
+    hasInternalPassword = 1;
+    internalPasswordEnc = internalPasswordPlain && String(internalPasswordPlain).trim() ? encryptMailboxPassword(String(internalPasswordPlain).trim()) : null;
+  }
+  req.input('internalEmail', internalEmail);
+  req.input('internalEmailPasswordEnc', internalPasswordEnc);
+  req.input('hasInternalPassword', hasInternalPassword);
   await req.query(`
     MERGE ${PROFILE} AS t
     USING (SELECT @userId AS UserID) AS s ON t.UserID = s.UserID
     WHEN MATCHED THEN
-      UPDATE SET DesignationID = @designationId, OrgDesignationId = @orgDesignationId, OrgDepartmentId = @orgDepartmentId, EmployeeCode = @employeeCode, DateOfBirth = @dateOfBirth,
+      UPDATE SET DesignationID = ISNULL(@designationId, t.DesignationID),
+        OrgDesignationId = ISNULL(@orgDesignationId, t.OrgDesignationId),
+        OrgDepartmentId = ISNULL(@orgDepartmentId, t.OrgDepartmentId),
+        EmployeeCode = @employeeCode, DateOfBirth = @dateOfBirth,
         Gender = @gender, Phone = @phone, Mobile = @mobile,
         AddressLine1 = @addressLine1, AddressLine2 = @addressLine2,
         City = @city, State = @state, Pincode = @pincode, JoinDate = @joinDate, PAN = @pan, Aadhar = @aadhar,
-        PhotoUrl = @photoUrl, EmergencyContact = @emergencyContact, EmergencyPhone = @emergencyPhone, UpdatedAt = GETDATE()
+        PhotoUrl = @photoUrl, EmergencyContact = @emergencyContact, EmergencyPhone = @emergencyPhone,
+        InternalEmail = COALESCE(@internalEmail, t.InternalEmail),
+        InternalEmailPassword = CASE WHEN @hasInternalPassword = 1 THEN @internalEmailPasswordEnc ELSE t.InternalEmailPassword END,
+        UpdatedAt = GETDATE()
     WHEN NOT MATCHED THEN
       INSERT (UserID, DesignationID, OrgDesignationId, OrgDepartmentId, EmployeeCode, DateOfBirth, Gender, Phone, Mobile, AddressLine1, AddressLine2,
-        City, State, Pincode, JoinDate, PAN, Aadhar, PhotoUrl, EmergencyContact, EmergencyPhone)
+        City, State, Pincode, JoinDate, PAN, Aadhar, PhotoUrl, EmergencyContact, EmergencyPhone, InternalEmail, InternalEmailPassword)
       VALUES (@userId, @designationId, @orgDesignationId, @orgDepartmentId, @employeeCode, @dateOfBirth, @gender, @phone, @mobile, @addressLine1, @addressLine2,
-        @city, @state, @pincode, @joinDate, @pan, @aadhar, @photoUrl, @emergencyContact, @emergencyPhone);
+        @city, @state, @pincode, @joinDate, @pan, @aadhar, @photoUrl, @emergencyContact, @emergencyPhone, @internalEmail, @internalEmailPasswordEnc);
   `);
 }
 
@@ -320,14 +371,23 @@ export async function upsertEmployeeBank(
 
 export async function updateUserDepartmentAndName(
   userId: number,
-  data: { departmentId?: number | null; name?: string }
+  data: { departmentId?: number | null; name?: string; email?: string | null; username?: string | null }
 ): Promise<boolean> {
   const req = await getRequest();
   req.input('userId', userId);
   req.input('departmentId', data.departmentId ?? null);
   req.input('name', (data.name ?? '').trim().slice(0, 200));
+  const emailProvided = data.email !== undefined ? 1 : 0;
+  const usernameProvided = data.username !== undefined ? 1 : 0;
+  req.input('email', data.email !== undefined ? (data.email ?? '').trim().slice(0, 256) || null : null);
+  req.input('username', data.username !== undefined ? (data.username ?? '').trim().slice(0, 256) || null : null);
+  req.input('emailProvided', emailProvided);
+  req.input('usernameProvided', usernameProvided);
   const result = await req.query(`
-    UPDATE ${USERS} SET DepartmentID = @departmentId, Name = @name WHERE userid = @userId
+    UPDATE ${USERS} SET DepartmentID = @departmentId, Name = @name,
+      Email = CASE WHEN @emailProvided = 1 THEN @email ELSE Email END,
+      Username = CASE WHEN @usernameProvided = 1 THEN @username ELSE Username END
+    WHERE userid = @userId
   `);
   return (result.rowsAffected[0] ?? 0) > 0;
 }

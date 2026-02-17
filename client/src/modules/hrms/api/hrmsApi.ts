@@ -27,12 +27,31 @@ export interface OrgDesignation {
 export interface OrgTeam {
   id: number;
   departmentId: number;
+  branchId: number | null;
   name: string;
   parentTeamId: number | null;
   leadUserId: number | null;
   level: number;
+  icon: string | null;
+  themeColor: string | null;
   createdAt: string;
   updatedAt: string | null;
+}
+
+export interface EmployeeBranchAccess {
+  branchId: number;
+  branchName: string;
+  branchCode: string;
+  isDefault: boolean;
+}
+
+export interface UnassignedUser {
+  userId: number;
+  name: string;
+  departmentName: string | null;
+  designationName: string | null;
+  photoUrl: string | null;
+  orgDepartmentId: number | null;
 }
 
 export interface OrgTreeNode {
@@ -55,7 +74,7 @@ export const hrmsApi = {
     return api.get<{ success: boolean; data: unknown[]; total: number }>(`/api/hrms/employees?${search.toString()}`);
   },
   getEmployee: (userId: number) =>
-    api.get<{ success: boolean; user: unknown; profile: unknown; designationName: string | null; family: unknown[]; bank: unknown; contactNumbers?: unknown[] }>(`/api/hrms/employees/${userId}`),
+    api.get<{ success: boolean; user: unknown; profile: unknown; designationName: string | null; family: unknown[]; bank: unknown; contactNumbers?: unknown[]; branches?: EmployeeBranchAccess[] }>(`/api/hrms/employees/${userId}`),
   updateEmployee: (userId: number, data: unknown) =>
     api.put(`/api/hrms/employees/${userId}`, data),
   getProfile: () => api.get<{ success: boolean; data: unknown }>('/api/hrms/profile'),
@@ -83,9 +102,9 @@ export const hrmsApi = {
     api.get<{ success: boolean; data: OrgTeam[] }>(`/api/hrms/org/teams${departmentId != null ? `?departmentId=${departmentId}` : ''}`),
   getOrgTeam: (id: number) =>
     api.get<{ success: boolean; data: OrgTeam }>(`/api/hrms/org/teams/${id}`),
-  createOrgTeam: (data: { departmentId: number; name: string; parentTeamId?: number | null; leadUserId?: number | null; level: number }) =>
+  createOrgTeam: (data: { departmentId: number; name: string; parentTeamId?: number | null; leadUserId?: number | null; level: number; icon?: string | null; themeColor?: string | null }) =>
     api.post<{ success: boolean; id: number; data: OrgTeam }>('/api/hrms/org/teams', data),
-  updateOrgTeam: (id: number, data: Partial<{ name: string; parentTeamId: number | null; leadUserId: number | null; level: number }>) =>
+  updateOrgTeam: (id: number, data: Partial<{ name: string; departmentId: number; parentTeamId: number | null; leadUserId: number | null; level: number; icon?: string | null; themeColor?: string | null }>) =>
     api.put<{ success: boolean; data: OrgTeam }>(`/api/hrms/org/teams/${id}`, data),
   deleteOrgTeam: (id: number) =>
     api.delete(`/api/hrms/org/teams/${id}`),
@@ -99,6 +118,9 @@ export const hrmsApi = {
 
   getOrgTree: (departmentId?: number) =>
     api.get<{ success: boolean; nodes: OrgTreeNode[]; edges: { source: string; target: string }[] }>(`/api/hrms/org/tree${departmentId != null ? `?departmentId=${departmentId}` : ''}`),
+
+  listUnassignedUsers: () =>
+    api.get<{ success: boolean; data: UnassignedUser[] }>('/api/hrms/org/unassigned-users'),
 
   recordPromotion: (userId: number, data: { toOrgDesignationId: number; toTeamId: number; effectiveDate: string; changeType: 'Promotion' | 'Demotion' | 'Transfer'; notes?: string }) =>
     api.post(`/api/hrms/org/employees/${userId}/promotion`, data),

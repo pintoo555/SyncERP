@@ -13,37 +13,37 @@ function getRandomCompanyImageUrl(): string {
 }
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [gaze, setGaze] = useState<GazeState | null>(null);
   const [eyesCovered, setEyesCovered] = useState(false);
-  const [emailFocused, setEmailFocused] = useState(false);
+  const [usernameFocused, setUsernameFocused] = useState(false);
   const [sideImageUrl] = useState<string>(() => getRandomCompanyImageUrl());
-  const emailRef = useRef<HTMLInputElement>(null);
+  const usernameRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!emailFocused) {
+    if (!usernameFocused) {
       setGaze(null);
       return;
     }
     const id = requestAnimationFrame(() => {
-      setGaze(computeGaze(emailRef.current, avatarRef.current));
+      setGaze(computeGaze(usernameRef.current, avatarRef.current));
     });
     return () => cancelAnimationFrame(id);
-  }, [email, emailFocused]);
+  }, [username, usernameFocused]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      await login(username.trim(), password);
       if (rememberMe) {
         try { localStorage.setItem('synchronics_remember', '1'); } catch (_) {}
       } else {
@@ -70,19 +70,18 @@ export default function Login() {
                       ref={avatarRef}
                       gaze={gaze}
                       eyesCovered={eyesCovered}
-                      emailFocused={emailFocused}
+                      emailFocused={usernameFocused}
                     />
                     <div className="auth-brand text-center mb-4">
-                      <Link to="/" className="logo-dark">
-                        <img src="/images/logo-black.png" alt="Synchronics" height="32" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                        <span className="d-none fw-bold fs-4">Synchronics</span>
+                      <Link to="/" className="logo-dark d-inline-flex align-items-center gap-2">
+                        <img src="/images/logo-black.png" alt="Synchronics" height="36" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        <span className="fw-bold" style={{ fontSize: 18, letterSpacing: 1.5 }}>SYNCHRONICS</span>
                       </Link>
                       <Link to="/" className="logo-light">
-                        <img src="/images/logo.png" alt="Synchronics" height="32" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                        <span className="d-none fw-bold fs-4">Synchronics</span>
+                        <img src="/images/logo.png" alt="Synchronics" height="36" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       </Link>
                       <h4 className="fw-bold mt-4">Welcome back</h4>
-                      <p className="text-muted w-lg-75 mx-auto">Sign in with your email and password to continue.</p>
+                      <p className="text-muted w-lg-75 mx-auto">Sign in with your username and password to continue.</p>
                     </div>
 
                     <form onSubmit={handleSubmit}>
@@ -92,20 +91,20 @@ export default function Login() {
                         </div>
                       )}
                       <div className="auth-form-group auth-input-wrap">
-                        <span className="auth-input-icon" aria-hidden><i className="ti ti-mail" /></span>
+                        <span className="auth-input-icon" aria-hidden><i className="ti ti-user" /></span>
                         <input
-                          ref={emailRef}
+                          ref={usernameRef}
                           type="text"
-                          id="userEmail"
+                          id="userUsername"
                           placeholder=" "
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          onFocus={() => setEmailFocused(true)}
-                          onBlur={() => setEmailFocused(false)}
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          onFocus={() => setUsernameFocused(true)}
+                          onBlur={() => setUsernameFocused(false)}
                           required
                           autoComplete="username"
                         />
-                        <label htmlFor="userEmail" className="auth-floating-label">Email address</label>
+                        <label htmlFor="userUsername" className="auth-floating-label">Username</label>
                         <span className="auth-underline" aria-hidden />
                       </div>
 

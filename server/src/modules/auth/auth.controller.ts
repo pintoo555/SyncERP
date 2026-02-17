@@ -25,22 +25,24 @@ const SESSION_HEADER = 'x-session-id';
 
 export async function login(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, password } = req.body as { email?: string; password?: string };
-    if (!email || !password) {
-      await logAudit({ eventType: 'login_failure', userEmail: email || undefined, ipAddress: getClientIp(req), userAgent: getUserAgent(req), details: 'Missing email or password' }).catch(() => {});
-      return next(new AppError(400, 'Email and password are required'));
+    const body = req.body as { username?: string; email?: string; password?: string };
+    const username = (body.username ?? body.email ?? '').toString().trim();
+    const password = body.password;
+    if (!username || !password) {
+      await logAudit({ eventType: 'login_failure', userEmail: username || undefined, ipAddress: getClientIp(req), userAgent: getUserAgent(req), details: 'Missing username or password' }).catch(() => {});
+      return next(new AppError(400, 'Username and password are required'));
     }
-    const user = await authService.validateLogin(String(email).trim(), password);
+    const user = await authService.validateLogin(username, password);
     const sessionId = (req.headers[SESSION_HEADER] as string)?.trim?.();
     if (sessionId) removeRevokedSessionId(sessionId);
     const payload = { userId: user.userid, email: user.Email };
     const token = jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiresIn } as jwt.SignOptions);
     res.cookie(config.jwt.cookieName, token, COOKIE_OPTIONS);
     await logAudit({ eventType: 'login', entityType: 'user', entityId: String(user.userid), userId: user.userid, userEmail: user.Email, ipAddress: getClientIp(req), userAgent: getUserAgent(req) }).catch(() => {});
-    res.json({ success: true, user: { userId: user.userid, name: user.Name, email: user.Email, departmentId: user.DepartmentID } });
+    res.json({ success: true, user: { userId: user.userid, name: user.Name, username: user.Username ?? user.Email, email: user.Email, departmentId: user.DepartmentID } });
   } catch (e) {
     if (e instanceof AppError && e.statusCode === 401) {
-      await logAudit({ eventType: 'login_failure', userEmail: (req.body as { email?: string })?.email, ipAddress: getClientIp(req), userAgent: getUserAgent(req), details: e.message }).catch(() => {});
+      await logAudit({ eventType: 'login_failure', userEmail: (req.body as { username?: string })?.username, ipAddress: getClientIp(req), userAgent: getUserAgent(req), details: e.message }).catch(() => {});
     }
     if (e instanceof AppError) return next(e);
     console.error('Login error:', e);
@@ -71,11 +73,11 @@ export async function currentUser(req: AuthRequest, res: Response, next: NextFun
   try {
     const reqDb = await getRequest();
     const userResult = await reqDb.input('userId', req.user.userId).query(`
-      SELECT u.userid, u.Name, u.DepartmentID, u.Email, d.DepartmentName
+      SELECT u.userid, u.Name, u.DepartmentID, u.Username, u.Email, d.DepartmentName
       FROM rb_users u LEFT JOIN sync_Department d ON d.DepartmentID = u.DepartmentID
       WHERE u.userid = @userId
     `);
-    const row = userResult.recordset[0] as { userid: number; Name: string; DepartmentID: number | null; Email: string; DepartmentName: string | null } | undefined;
+    const row = userResult.recordset[0] as { userid: number; Name: string; DepartmentID: number | null; Username: string | null; Email: string; DepartmentName: string | null } | undefined;
     if (!row) return next(new AppError(404, 'User not found'));
     let permissions: string[] = [];
     try {
@@ -97,7 +99,7 @@ export async function currentUser(req: AuthRequest, res: Response, next: NextFun
     }
     res.json({
       success: true,
-      user: { userId: row.userid, name: row.Name, email: row.Email, departmentId: row.DepartmentID, departmentName: row.DepartmentName, roles, permissions },
+      user: { userId: row.userid, name: row.Name, username: row.Username ?? row.Email, email: row.Email, departmentId: row.DepartmentID, departmentName: row.DepartmentName, roles, permissions },
     });
   } catch (e) {
     if (e instanceof AppError) return next(e);

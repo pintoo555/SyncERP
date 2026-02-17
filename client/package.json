@@ -10,11 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@xyflow/react": "^12.3.0",
     "@fullcalendar/core": "^6.1.10",
     "@fullcalendar/daygrid": "^6.1.10",
     "@fullcalendar/interaction": "^6.1.10",
     "@fullcalendar/react": "^6.1.10",
+    "@xyflow/react": "^12.3.0",
     "apexcharts": "^5.3.6",
     "bootstrap": "^5.3.3",
     "echarts": "^6.0.0",
@@ -24,7 +24,8 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.0",
     "recharts": "^3.7.0",
-    "socket.io-client": "^4.7.2"
+    "socket.io-client": "^4.7.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bootstrap": "^5.2.10",

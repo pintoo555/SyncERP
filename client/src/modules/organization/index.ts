@@ -1,0 +1,10 @@
+export { default as CompanyManagement } from './pages/CompanyManagement';
+export { default as BranchManagement } from './pages/BranchManagement';
+export { default as GeographyManagement } from './pages/GeographyManagement';
+export { default as BranchCompanyMapping } from './pages/BranchCompanyMapping';
+export { default as BranchCapabilitySetup } from './pages/BranchCapabilitySetup';
+export { default as BranchDepartmentSetup } from './pages/BranchDepartmentSetup';
+export { default as BranchLocationManagement } from './pages/BranchLocationManagement';
+export { default as TransferManagement } from './pages/TransferManagement';
+export { default as DepartmentManagement } from './pages/DepartmentManagement';
+export { default as DesignationManagement } from './pages/DesignationManagement';

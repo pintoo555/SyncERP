@@ -139,7 +139,7 @@ export default function AIConfig() {
   return (
     <div className="p-4">
       <div className="d-flex align-items-center justify-content-between mb-4">
-        <h4 className="fw-semibold mb-0">AI & API Config</h4>
+        <h4 className="fw-semibold mb-0"><i className="ti ti-key me-2 text-primary" />API Configuration</h4>
         {canCreate && (
           <button type="button" className="btn btn-primary" onClick={openCreate}>
             Add service
@@ -147,7 +147,7 @@ export default function AIConfig() {
         )}
       </div>
       <p className="text-muted small">
-        Configure API keys and endpoints for AI providers (OpenAI, Claude, etc.) and other external services. Keys are stored securely and masked in the list.
+        Manage API keys and endpoints for external services — AI providers (OpenAI, Claude), GST verification (GSTZen), and more. Keys are stored securely and masked in the list. Use service codes like <code>OPENAI</code>, <code>GSTZEN</code>, etc.
       </p>
       {error && (
         <div className="alert alert-danger py-2" role="alert">

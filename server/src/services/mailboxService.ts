@@ -11,6 +11,14 @@ import nodemailer from 'nodemailer';
 
 const SCHEMA = config.db.schema || 'dbo';
 const TABLE = `[${SCHEMA}].[react_UserMailbox]`;
+const PROFILE_TABLE = `[${SCHEMA}].[hrms_EmployeeProfile]`;
+
+const DEFAULT_IMAP_HOST = process.env.MAILBOX_IMAP_HOST || 'localhost';
+const DEFAULT_IMAP_PORT = parseInt(process.env.MAILBOX_IMAP_PORT || '143', 10);
+const DEFAULT_IMAP_SECURE = (process.env.MAILBOX_IMAP_SECURE || '').toLowerCase() === 'true';
+const DEFAULT_SMTP_HOST = process.env.MAILBOX_SMTP_HOST || 'localhost';
+const DEFAULT_SMTP_PORT = parseInt(process.env.MAILBOX_SMTP_PORT || '587', 10);
+const DEFAULT_SMTP_SECURE = (process.env.MAILBOX_SMTP_SECURE || '').toLowerCase() === 'true';
 
 export interface MailboxCredentials {
   email: string;
@@ -69,6 +77,23 @@ async function getCredentialsRow(userId: number): Promise<{
   SmtpSecure: boolean;
 } | null> {
   const req = await getRequest();
+  const profileResult = await req.input('userId', userId).query(`
+    SELECT InternalEmail AS Email, InternalEmailPassword AS EncryptedPassword
+    FROM ${PROFILE_TABLE} WHERE UserID = @userId AND InternalEmail IS NOT NULL AND InternalEmail <> '' AND InternalEmailPassword IS NOT NULL
+  `);
+  const profileRow = (profileResult.recordset as any[])?.[0];
+  if (profileRow?.Email && profileRow?.EncryptedPassword) {
+    return {
+      Email: profileRow.Email,
+      EncryptedPassword: profileRow.EncryptedPassword,
+      ImapHost: DEFAULT_IMAP_HOST,
+      ImapPort: DEFAULT_IMAP_PORT,
+      ImapSecure: DEFAULT_IMAP_SECURE,
+      SmtpHost: DEFAULT_SMTP_HOST,
+      SmtpPort: DEFAULT_SMTP_PORT,
+      SmtpSecure: DEFAULT_SMTP_SECURE,
+    };
+  }
   const result = await req.input('userId', userId).query(`
     SELECT Email, EncryptedPassword, ImapHost, ImapPort, ImapSecure, SmtpHost, SmtpPort, SmtpSecure
     FROM ${TABLE} WHERE UserId = @userId

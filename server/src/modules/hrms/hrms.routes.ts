@@ -9,15 +9,7 @@ router.use(requireAuth);
 router.get('/departments', hrmsController.listDepartments);
 router.get('/designations', hrmsController.listDesignations);
 
-router.get('/org/departments', requirePermission('HRMS.VIEW'), hrmsController.listOrgDepartments);
-router.post('/org/departments', requirePermission('HRMS.EDIT'), hrmsController.createOrgDepartment);
-router.put('/org/departments/:id', requirePermission('HRMS.EDIT'), hrmsController.updateOrgDepartment);
-router.delete('/org/departments/:id', requirePermission('HRMS.EDIT'), hrmsController.deleteOrgDepartment);
-
-router.get('/org/designations', requirePermission('HRMS.VIEW'), hrmsController.listOrgDesignations);
-router.post('/org/designations', requirePermission('HRMS.EDIT'), hrmsController.createOrgDesignation);
-router.put('/org/designations/:id', requirePermission('HRMS.EDIT'), hrmsController.updateOrgDesignation);
-router.delete('/org/designations/:id', requirePermission('HRMS.EDIT'), hrmsController.deleteOrgDesignation);
+// Department and Designation CRUD moved to /api/organization/departments and /api/organization/designations
 
 router.get('/org/teams', requirePermission('HRMS.VIEW'), hrmsController.listOrgTeams);
 router.get('/org/teams/:id', requirePermission('HRMS.VIEW'), hrmsController.getOrgTeam);
@@ -29,6 +21,7 @@ router.post('/org/teams/:id/members', requirePermission('HRMS.EDIT'), hrmsContro
 
 router.post('/org/employees/:userId/move-team', requirePermission('HRMS.EDIT'), hrmsController.moveUserToTeam);
 router.get('/org/tree', requirePermission('HRMS.VIEW'), hrmsController.getOrgTree);
+router.get('/org/unassigned-users', requirePermission('HRMS.VIEW'), hrmsController.listUnassignedUsers);
 
 router.post('/org/employees/:userId/promotion', requirePermission('HRMS.EDIT'), hrmsController.recordPromotion);
 router.get('/org/employees/:userId/promotion-history', hrmsController.listPromotionHistory);

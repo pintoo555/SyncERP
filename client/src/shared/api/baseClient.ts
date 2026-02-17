@@ -4,6 +4,7 @@
  */
 import { getOrCreateSessionId } from '../utils/sessionId';
 import { touch as activityTouch } from '../utils/activityTracker';
+import { getSelectedBranchId } from '../../contexts/BranchContext';
 
 /** When set (e.g. http://server:4000), all API and socket calls use this backend. */
 const API_BASE = typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL
@@ -26,6 +27,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...(options.headers as Record<string, string>),
   };
   if (sessionId) headers['X-Session-Id'] = sessionId;
+  const branchId = getSelectedBranchId();
+  if (branchId) headers['X-Branch-Id'] = String(branchId);
 
   let res: Response;
   try {
@@ -118,6 +121,8 @@ function uploadWithProgress<T>(path: string, formData: FormData, options: Upload
 
     xhr.open('POST', url);
     if (sessionId) xhr.setRequestHeader('X-Session-Id', sessionId);
+    const brId = getSelectedBranchId();
+    if (brId) xhr.setRequestHeader('X-Branch-Id', String(brId));
     xhr.send(formData);
   });
 }

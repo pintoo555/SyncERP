@@ -10,8 +10,10 @@ import { api } from '../api/client';
 import { FooterActivity } from '../components/FooterActivity';
 import LockScreenView, { isLocked, setLocked } from '../components/LockScreen';
 import IdleLockPreferencesModal from '../components/IdleLockPreferencesModal';
+import { FloatingChatWidget } from '../components/FloatingChatWidget';
 import { MENU_ROOT, filterMenuByPermission } from '../config/menuConfig';
 import { getTablerIconClass } from '../config/tablerIcons';
+import BranchSelector from '../components/BranchSelector';
 
 interface ConversationRow {
   userId: number;
@@ -290,9 +292,9 @@ export default function Layout() {
             </span>
           </span>
           <span className="logo logo-dark">
-            <span className="logo-lg">
-              <img src="/images/logo-black.png" alt="Synchronics" onError={(e) => { const t = e.target as HTMLImageElement; t.style.display = 'none'; (t.nextElementSibling as HTMLElement)?.classList.remove('d-none'); }} />
-              <span className="d-none fw-bold align-middle">Synchronics</span>
+            <span className="logo-lg d-flex align-items-center gap-2">
+              <img src="/images/logo-black.png" alt="Synchronics" onError={(e) => { const t = e.target as HTMLImageElement; t.style.display = 'none'; }} />
+              <span className="fw-bold align-middle" style={{ fontSize: 15, letterSpacing: 1 }}>SYNCHRONICS</span>
             </span>
             <span className="logo-sm">
               <img src="/images/logo-sm.png" alt="S" onError={(e) => { const t = e.target as HTMLImageElement; t.style.display = 'none'; (t.nextElementSibling as HTMLElement)?.classList.remove('d-none'); }} />
@@ -389,6 +391,7 @@ export default function Layout() {
               <i className="ti ti-menu-4 fs-22" />
             </button>
             <h5 className="mb-0 d-none d-md-block">Synchronics ERP</h5>
+            <BranchSelector />
           </div>
           <div className="d-flex align-items-center gap-1 gap-sm-2">
             {user && (
@@ -726,6 +729,7 @@ export default function Layout() {
       )}
 
       <IdleLockPreferencesModal show={showPreferencesModal} onClose={() => setShowPreferencesModal(false)} />
+      <FloatingChatWidget />
     </div>
   );
 }

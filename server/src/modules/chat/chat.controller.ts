@@ -72,8 +72,10 @@ export async function getMessages(req: AuthRequest, res: Response, next: NextFun
     if (userId == null) return next(new AppError(401, 'Unauthorized'));
     const withUserId = parseInt(String(req.query.with ?? ''), 10);
     if (Number.isNaN(withUserId)) return next(new AppError(400, 'Query "with" (user id) is required'));
-    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || 100), 10) || 100));
-    const data = await chatService.getMessages(userId, withUserId, limit);
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || 40), 10) || 40));
+    const beforeRaw = req.query.before;
+    const beforeMessageId = beforeRaw != null && beforeRaw !== '' ? parseInt(String(beforeRaw), 10) : undefined;
+    const data = await chatService.getMessages(userId, withUserId, limit, beforeMessageId);
     res.json({ success: true, data });
   } catch (e) {
     next(e);

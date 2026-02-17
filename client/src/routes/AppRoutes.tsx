@@ -38,7 +38,23 @@ import { AccountsOverview, Invoices, CreditNotes } from '../modules/accounts';
 import { Calendar } from '../modules/calendar';
 import { Chat } from '../modules/chat';
 import { EmailApp, MailboxSettings } from '../modules/emails';
-import { HRMSEmployees, HRMSEmployeeDetail, HRMSProfile, HRMSUserSearch, HRMSDepartmentManagement, HRMSDesignationManagement, HRMSTeamsOrg } from '../modules/hrms';
+import { HRMSEmployees, HRMSEmployeeDetail, HRMSProfile, HRMSUserSearch, HRMSTeamsOrg } from '../modules/hrms';
+import {
+  CompanyManagement,
+  BranchManagement,
+  GeographyManagement,
+  BranchCompanyMapping,
+  BranchCapabilitySetup,
+  BranchDepartmentSetup,
+  BranchLocationManagement,
+  TransferManagement,
+  DepartmentManagement,
+  DesignationManagement,
+} from '../modules/organization';
+import {
+  ClientListPage, ClientCreatePage, ClientEditPage, ClientViewPage,
+  ClientGroupsPage, IndustryMasterPage,
+} from '../modules/clients';
 import { CommunicationDashboard, CommunicationMessages, CommunicationSandbox } from '../modules/communication';
 import { CallMatrixDashboard, CallMatrixSearch } from '../modules/callMatrix';
 import { Dashboard } from '../modules/dashboards';
@@ -117,12 +133,31 @@ export function AppRoutes() {
         <Route path="emails/settings" element={<MailboxSettings />} />
         <Route path="audit" element={<AuditDashboard />} />
         <Route path="audit/log" element={<AuditList />} />
+        {/* Clients module */}
+        <Route path="clients" element={<ClientListPage />} />
+        <Route path="clients/create" element={<ClientCreatePage />} />
+        <Route path="clients/groups" element={<ClientGroupsPage />} />
+        <Route path="clients/industries" element={<IndustryMasterPage />} />
+        <Route path="clients/:id/edit" element={<ClientEditPage />} />
+        <Route path="clients/:id" element={<ClientViewPage />} />
+        {/* Organization module */}
+        <Route path="organization/companies" element={<CompanyManagement />} />
+        <Route path="organization/branches" element={<BranchManagement />} />
+        <Route path="organization/departments" element={<DepartmentManagement />} />
+        <Route path="organization/designations" element={<DesignationManagement />} />
+        <Route path="organization/locations" element={<BranchLocationManagement />} />
+        <Route path="organization/capabilities" element={<BranchCapabilitySetup />} />
+        <Route path="organization/geography" element={<GeographyManagement />} />
+        <Route path="organization/transfers" element={<TransferManagement />} />
+        <Route path="organization/branch-companies" element={<BranchCompanyMapping />} />
+        <Route path="organization/branch-departments" element={<BranchDepartmentSetup />} />
+        {/* HRMS module (departments/designations moved to organization) */}
         <Route path="hrms/employees" element={<HRMSEmployees />} />
         <Route path="hrms/employees/:userId" element={<HRMSEmployeeDetail />} />
         <Route path="hrms/profile" element={<HRMSProfile />} />
         <Route path="hrms/user-search" element={<HRMSUserSearch />} />
-        <Route path="hrms/departments" element={<HRMSDepartmentManagement />} />
-        <Route path="hrms/designations" element={<HRMSDesignationManagement />} />
+        <Route path="hrms/departments" element={<Navigate to="/organization/departments" replace />} />
+        <Route path="hrms/designations" element={<Navigate to="/organization/designations" replace />} />
         <Route path="hrms/teams" element={<HRMSTeamsOrg />} />
         <Route path="communication" element={<CommunicationDashboard />} />
         <Route path="communication/messages" element={<CommunicationMessages />} />

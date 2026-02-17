@@ -35,6 +35,7 @@ export interface EmployeeProfileRow {
   photoUrl: string | null;
   emergencyContact: string | null;
   emergencyPhone: string | null;
+  internalEmail: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -86,37 +87,23 @@ export interface EmployeeListItem {
   mobile: string | null;
   joinDate: string | null;
   isActive: boolean;
+  branchId: number | null;
+  branchName: string | null;
 }
 
-/** Organization structure (utbl_Org_*) */
-export interface OrgDepartmentRow {
-  id: number;
-  departmentCode: string;
-  departmentName: string;
-  isActive: boolean;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string | null;
-}
-
-export interface OrgDesignationRow {
-  id: number;
-  departmentId: number;
-  name: string;
-  level: number;
-  isLeader: boolean;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string | null;
-}
+/** OrgDepartmentRow and OrgDesignationRow moved to organization.types.ts – re-exported for backward compatibility */
+export type { OrgDepartmentRow, OrgDesignationRow } from '../organization/organization.types';
 
 export interface OrgTeamRow {
   id: number;
   departmentId: number;
+  branchId: number | null;
   name: string;
   parentTeamId: number | null;
   leadUserId: number | null;
   level: number;
+  icon: string | null;
+  themeColor: string | null;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -126,6 +113,7 @@ export interface OrgTeamMemberRow {
   teamId: number;
   userId: number;
   createdAt: string;
+  leftAt: string | null;
 }
 
 export interface OrgPromotionHistoryRow {
@@ -135,8 +123,10 @@ export interface OrgPromotionHistoryRow {
   toDesignationId: number | null;
   fromTeamId: number | null;
   toTeamId: number | null;
+  fromBranchId: number | null;
+  toBranchId: number | null;
   effectiveDate: string;
-  changeType: 'Promotion' | 'Demotion' | 'Transfer';
+  changeType: 'Promotion' | 'Demotion' | 'Transfer' | 'BranchTransfer';
   notes: string | null;
   createdAt: string;
   createdBy: number | null;
