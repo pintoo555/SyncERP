@@ -1,0 +1,3 @@
+/**
+ * Settings validation – placeholder.
+ */

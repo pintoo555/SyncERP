@@ -1,0 +1,14 @@
+{
+  "name": "synchronics-asset-app",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix client && npm run build --prefix server",
+    "start": "node server/dist/app.js",
+    "dev": "concurrently -n api,client -c cyan,magenta \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

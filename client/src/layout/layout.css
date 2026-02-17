@@ -1,0 +1,303 @@
+/* Base: ensure full height for React root. Inspinia theme controls .wrapper, .sidenav-menu, .app-topbar, .content-page, .card, .footer */
+html, body { height: 100%; margin: 0; }
+
+/* Inspinia-style card hover */
+.hover-lift { transition: transform 0.2s; }
+.hover-lift:hover { transform: translateY(-2px); }
+#root { height: 100%; }
+
+/* Main content area: ensure outlet content is visible (e.g. Chat, dashboards) */
+.content-page { min-height: 50vh; padding-bottom: var(--app-footer-height, 52px); }
+
+/* Sticky footer – always pinned to the bottom of the viewport */
+.content-page > .footer {
+  --app-footer-height: 52px;
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  left: var(--ins-sidenav-width, 235px);
+  z-index: 999;
+  height: var(--app-footer-height);
+  min-height: var(--app-footer-height);
+  background: var(--ins-body-bg, var(--bs-body-bg, #f5f5f5));
+  border-top: 1px solid var(--ins-border-color, var(--bs-border-color, #dee2e6));
+  padding: 0.625rem;
+  transition: left 0.25s ease-in-out;
+  display: flex;
+  align-items: center;
+}
+/* Expose footer height for chat page so input sits above it */
+.content-page { --app-footer-height: 52px; }
+html[data-sidenav-size="condensed"] .content-page > .footer {
+  left: var(--ins-sidenav-width-sm, 75px);
+}
+html[data-sidenav-size="offcanvas"] .content-page > .footer,
+html[data-layout="topnav"] .content-page > .footer {
+  left: 0;
+}
+
+/* Auth (login) – Inspinia auth-2 style: split card + side image */
+.auth-box {
+  position: relative;
+  min-height: 100vh;
+  padding: 50px 1rem;
+  background: var(--bs-body-bg, #f5f5f5);
+}
+.auth-box .card-body { padding: 50px; }
+.auth-brand .logo-dark { display: block; }
+.auth-brand .logo-light { display: none; }
+html[data-bs-theme="dark"] .auth-brand .logo-light { display: block; }
+html[data-bs-theme="dark"] .auth-brand .logo-dark { display: none; }
+.card-side-img {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.auth-overlay {
+  background: linear-gradient(to top, #313a46, rgba(49,58,70,0.8), rgba(49,58,70,0.5));
+}
+
+/* Dashboard Admin – override Inspinia's dashed borders (card-header, etc.) to solid */
+.dashboard-admin .card-header {
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6) !important;
+}
+.dashboard-admin .border-end {
+  border-right: 1px solid var(--bs-border-color, #dee2e6) !important;
+}
+
+/* Dashboard Admin – consistent padding between cards/tabs */
+.dashboard-admin .row.g-3 > [class*="col"] {
+  margin-bottom: 0;
+}
+.dashboard-admin .row.g-3 .card {
+  margin-bottom: 0;
+  height: 100%;
+}
+
+/* Avatar fallback size */
+.avatar-md { width: 40px; height: 40px; object-fit: cover; }
+.table th { font-weight: 600; }
+
+/* Kanban: activity dot */
+.kanban-card-activity { position: relative; }
+.kanban-card-activity .kanban-activity-dot {
+  position: absolute; top: 6px; right: 6px; width: 12px; height: 12px; border-radius: 50%;
+  background: #dc3545; animation: kanban-dot-blink 0.5s ease-in-out infinite; z-index: 1;
+}
+@keyframes kanban-dot-blink {
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.6); }
+  50% { opacity: 0.4; transform: scale(0.85); box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.2); }
+}
+
+/* Chat – Inspinia chat/outlook layout (fit in viewport: topbar + chat + app footer) */
+.chat-page-wrapper {
+  padding: 0.75rem 0.75rem 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Desktop: fit in viewport above app footer */
+  height: calc(100vh - var(--ins-topbar-height, 56px) - var(--app-footer-height, 52px) - 1.5rem);
+  max-height: calc(100vh - var(--ins-topbar-height, 56px) - var(--app-footer-height, 52px) - 1.5rem);
+}
+.outlook-box {
+  display: flex;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+}
+.outlook-left-menu { width: 320px; flex-shrink: 0; min-height: 0; }
+.outlook-left-menu.outlook-left-menu-lg { width: 320px; }
+.outlook-left-menu > .card { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.chat-list .list-group-item { padding: 10px 12px; border: none; border-radius: 0.25rem; }
+.chat-item .chat-message { max-width: 100%; }
+.card-bg { background: var(--bs-body-bg, #fff); }
+.app-search { position: relative; }
+.app-search .form-control { padding-left: 2.5rem; }
+.app-search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.avatar-sm { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+
+/* Chat main card: fill remaining space, flex column so messages scroll and input sticks */
+.chat-main-card {
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.chat-messages-area { scroll-behavior: smooth; flex: 1 1 0%; min-height: 0; }
+.chat-input-footer {
+  z-index: 2;
+  flex-shrink: 0;
+  min-height: 48px;
+  padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0));
+}
+.chat-input-textarea { font-size: 0.875rem; }
+
+/* ─── Chat responsive: mobile & tablet (< 992px) ─── */
+@media (max-width: 991.98px) {
+  /* Chat page fills viewport minus topbar and app footer; no overlap with sticky footer */
+  .chat-page-wrapper {
+    padding: 0;
+    height: calc(100dvh - var(--ins-topbar-height, 56px) - var(--app-footer-height, 52px));
+    max-height: calc(100dvh - var(--ins-topbar-height, 56px) - var(--app-footer-height, 52px));
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-responsive {
+    overflow: hidden !important;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    /* Stay within wrapper so input stays above app footer */
+    height: 100% !important;
+    max-height: 100% !important;
+  }
+  /* Sidebar: override offcanvas; render as a normal flex child */
+  .chat-responsive .chat-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+    position: static !important;
+    transform: none !important;
+    visibility: visible !important;
+    flex-shrink: 0;
+    height: 100%;
+  }
+  .chat-responsive .chat-sidebar > .card {
+    border-radius: var(--ins-border-radius, 0.3rem) !important;
+  }
+  /* When showing the list: sidebar visible, chat hidden */
+  .chat-responsive.chat-mobile-show-list .chat-sidebar {
+    display: block !important;
+  }
+  .chat-responsive.chat-mobile-show-list > .chat-main-card {
+    display: none !important;
+  }
+  /* When showing the chat: sidebar hidden, chat visible full-width and fills layout */
+  .chat-responsive.chat-mobile-show-chat .chat-sidebar {
+    display: none !important;
+  }
+  .chat-responsive.chat-mobile-show-chat > .chat-main-card {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    border-radius: var(--ins-border-radius, 0.3rem) !important;
+    overflow: hidden !important;
+  }
+  /* Chat header: prevent name from being cut off; reserve space */
+  .chat-main-card .card-header {
+    flex-shrink: 0;
+    min-height: 56px;
+    padding: 0.5rem 0.75rem;
+  }
+  .chat-main-card .card-header .flex-grow-1 {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .chat-main-card .card-header h5 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-main-card .card-header .lh-sm {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+/* Extra-small (phones): tighten spacing */
+@media (max-width: 575.98px) {
+  .chat-item .chat-message {
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.875rem;
+  }
+  .chat-msg-avatar { width: 26px !important; height: 26px !important; }
+  .chat-input-footer { padding: 0.35rem !important; }
+  .chat-input-textarea { font-size: 0.8125rem; }
+  .chat-emoji-btn { padding: 0.2rem !important; }
+}
+
+/* Topbar: ensure all text/icons inherit the Inspinia topbar color (critical for dark topbar) */
+.app-topbar .topbar-menu {
+  color: var(--ins-topbar-item-color, inherit);
+}
+.app-topbar .topbar-menu .topbar-link {
+  color: var(--ins-topbar-item-color, inherit);
+}
+.app-topbar .topbar-menu .topbar-link:hover {
+  color: var(--ins-topbar-item-hover-color, inherit);
+}
+
+/* Topbar chat badge – Inspinia-style (theme .topbar-badge sets position; we set size/font) */
+.app-topbar .topbar-menu .topbar-item .topbar-badge {
+  font-size: 11px;
+  line-height: 1;
+  padding: 0.2em 0.45em;
+  min-width: 1.25rem;
+}
+.bg-warning-subtle { background-color: rgba(var(--bs-warning-rgb, 255, 193, 7), 0.2); }
+.bg-info-subtle { background-color: rgba(var(--bs-info-rgb, 13, 110, 253), 0.15); }
+
+/* Email (webmail) – Inspinia mailbox layout https://chuibility.github.io/inspinia/mailbox.html */
+.mailbox-page { padding: 1rem 0; }
+.mailbox-layout {
+  display: flex;
+  gap: 0;
+  min-height: calc(100vh - 140px);
+  background: var(--ins-body-bg, #f1f2f7);
+}
+.mailbox-sidebar {
+  width: 220px;
+  min-width: 220px;
+  padding: 1rem 1.25rem;
+  background: #fff;
+  border-right: 1px solid var(--ins-border-color, #e7e9eb);
+  box-shadow: 1px 0 0 rgba(0,0,0,.03);
+}
+.mailbox-nav .nav-link {
+  padding: 0.35rem 0;
+  color: var(--ins-body-color, #4c4c5c);
+  border: none;
+  font-size: 0.875rem;
+}
+.mailbox-nav .nav-link:hover { color: var(--ins-primary, #1ab394); }
+.mailbox-nav .nav-link.active {
+  color: var(--ins-primary, #1ab394);
+  font-weight: 600;
+}
+.mailbox-folder { cursor: pointer; background: none; text-align: left; width: 100%; }
+.mailbox-main {
+  flex: 1;
+  padding: 1rem;
+  min-width: 0;
+}
+.mailbox-list-card,
+.mailbox-detail-card {
+  background: #fff;
+  border-radius: var(--ins-border-radius, 0.3rem);
+  box-shadow: var(--ins-box-shadow, 0 1px 4px rgba(130,143,163,.15));
+}
+.mailbox-table .mailbox-row { transition: background-color 0.15s; }
+.mailbox-table .mailbox-row:hover { background-color: rgba(var(--ins-primary-rgb, 26, 179, 148), 0.06); }
+.mailbox-table .mailbox-row-unread .mailbox-from,
+.mailbox-table .mailbox-row-unread .mailbox-subject { font-weight: 600; }
+.mailbox-table td { padding: 0.75rem 1rem; vertical-align: middle; }
+.mailbox-table .mailbox-subject { color: inherit; }
+.mailbox-body { min-height: 120px; max-height: 70vh; overflow-y: auto; }
+.email-html-body { word-wrap: break-word; max-width: 100%; line-height: 1.6; padding: 0.5rem 0; }
+.email-html-body img { max-width: 100%; height: auto; }
+.email-html-body a { word-break: break-all; }
+@media (max-width: 767px) {
+  .mailbox-layout { flex-direction: column; }
+  .mailbox-sidebar { width: 100%; min-width: 0; border-right: 0; border-bottom: 1px solid var(--ins-border-color, #e7e9eb); }
+}
+
+/* Print: hide nav and topbar */
+@media print {
+  .sidenav-menu, .app-topbar, .no-print { display: none !important; }
+  .content-page { background: #fff; padding: 0; }
+  .report-content .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
+}

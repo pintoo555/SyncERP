@@ -1,0 +1,3 @@
+/**
+ * Dashboards validation schemas (placeholder).
+ */

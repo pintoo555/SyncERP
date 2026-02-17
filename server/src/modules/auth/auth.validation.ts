@@ -1,0 +1,3 @@
+/**
+ * Auth validation schemas (placeholder).
+ */

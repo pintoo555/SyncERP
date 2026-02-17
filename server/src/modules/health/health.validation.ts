@@ -1,0 +1,3 @@
+/**
+ * Health validation – placeholder.
+ */

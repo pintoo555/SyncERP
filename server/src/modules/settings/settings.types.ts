@@ -1,0 +1,3 @@
+/**
+ * Settings module types – placeholder.
+ */

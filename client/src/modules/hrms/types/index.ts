@@ -1,0 +1,2 @@
+/** HRMS module types */
+export {};

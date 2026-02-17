@@ -1,0 +1,239 @@
+/* SVG Avatar (eyes follow caret; arms cover eyes on password focus) */
+.auth-avatar-wrap {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 1.25rem;
+  flex-shrink: 0;
+  /* Inspinia theme colors – use Ins variables when available, else Bootstrap */
+  --avatar-bg: var(--ins-info, var(--bs-info, #23c6c8));
+  --avatar-skin: var(--ins-primary-bg-subtle, var(--bs-light, #ddf4ef));
+  --avatar-outline: var(--ins-dark, var(--bs-gray-800, #313a46));
+  --avatar-hair: var(--ins-light, var(--bs-light, #eef2f7));
+  --avatar-iris: var(--ins-dark, var(--bs-gray-800, #313a46));
+  --avatar-mouth: var(--ins-gray-600, var(--bs-secondary, #8a969c));
+}
+.auth-avatar-svg-container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 100%;
+  border-radius: 50%;
+  border: 2.5px solid var(--avatar-outline);
+  overflow: hidden;
+  background: var(--avatar-bg);
+}
+.auth-avatar-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.auth-avatar-wrap .avatar-bg { fill: var(--avatar-bg); }
+.auth-avatar-wrap .avatar-skin,
+.auth-avatar-wrap .avatar-face,
+.auth-avatar-wrap .avatar-outerEar circle,
+.auth-avatar-wrap .avatar-outerEar path { fill: var(--avatar-skin); stroke: var(--avatar-outline); }
+.auth-avatar-wrap .avatar-bodyBG { fill: var(--ins-light, var(--bs-light)); stroke: var(--avatar-outline); }
+.auth-avatar-wrap .avatar-bodyFill { fill: var(--avatar-skin); }
+.auth-avatar-wrap .avatar-hair,
+.auth-avatar-wrap .avatar-eyebrow .avatar-hair { fill: var(--avatar-hair); stroke: var(--avatar-outline); }
+.auth-avatar-wrap .avatar-outline { stroke: var(--avatar-outline); }
+.auth-avatar-wrap .avatar-iris { fill: var(--avatar-iris); }
+.auth-avatar-wrap .avatar-eyeHighlight { fill: var(--ins-white, #fff); }
+.auth-avatar-wrap .avatar-mouthFill { fill: var(--avatar-mouth); }
+.auth-avatar-wrap .avatar-nose { fill: var(--avatar-iris); stroke: var(--avatar-outline); }
+.auth-avatar-wrap .avatar-arms polygon,
+.auth-avatar-wrap .avatar-arms path:not(.avatar-armSleeve):not(.avatar-armAccent) { fill: var(--avatar-skin); stroke: var(--avatar-outline); }
+.auth-avatar-wrap .avatar-arms .avatar-armSleeve { fill: var(--avatar-hair); stroke: var(--avatar-outline); }
+.auth-avatar-wrap .avatar-arms .avatar-armAccent { fill: var(--avatar-bg); }
+.auth-avatar-wrap .avatar-eyeL,
+.auth-avatar-wrap .avatar-eyeR {
+  transition: transform 0.4s ease-out;
+}
+.auth-avatar-wrap .avatar-armL,
+.auth-avatar-wrap .avatar-armR {
+  transition: transform 0.45s ease-out;
+}
+.auth-avatar-wrap .avatar-armR {
+  transition-delay: 0.1s;
+}
+
+/* Animated login form – floating labels, stagger entrance, focus line */
+
+.auth-form-animated .auth-brand {
+  animation: auth-fade-in-up 0.5s ease-out;
+}
+
+.auth-form-animated .auth-form-group {
+  opacity: 0;
+  animation: auth-fade-in-up 0.45s ease-out forwards;
+}
+
+.auth-form-animated .auth-form-group:nth-child(1) { animation-delay: 0.1s; }
+.auth-form-animated .auth-form-group:nth-child(2) { animation-delay: 0.18s; }
+.auth-form-animated .auth-form-group:nth-child(3) { animation-delay: 0.26s; }
+.auth-form-animated .auth-form-group:nth-child(4) { animation-delay: 0.34s; }
+.auth-form-animated .auth-form-group:nth-child(5) { animation-delay: 0.42s; }
+.auth-form-animated .auth-form-group:nth-child(6) { animation-delay: 0.5s; }
+.auth-form-animated .auth-form-group:nth-child(7) { animation-delay: 0.58s; }
+.auth-form-animated .auth-form-group:nth-child(8) { animation-delay: 0.66s; }
+
+@keyframes auth-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Floating label wrapper */
+.auth-input-wrap {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.auth-input-wrap .auth-input-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--bs-secondary);
+  font-size: 1.25rem;
+  pointer-events: none;
+  transition: color 0.25s ease, transform 0.25s ease;
+  z-index: 1;
+}
+
+.auth-input-wrap input:focus ~ .auth-input-icon,
+.auth-input-wrap input:not(:placeholder-shown) ~ .auth-input-icon,
+.auth-input-wrap.auth-has-value .auth-input-icon {
+  color: var(--bs-primary);
+}
+
+.auth-input-wrap .auth-floating-label {
+  position: absolute;
+  left: 2.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  color: var(--bs-secondary);
+  font-size: 1rem;
+  font-weight: 400;
+  pointer-events: none;
+  transition: transform 0.2s ease, font-size 0.2s ease, color 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 3.5rem);
+}
+
+.auth-input-wrap input:focus ~ .auth-floating-label,
+.auth-input-wrap input:not(:placeholder-shown) ~ .auth-floating-label,
+.auth-input-wrap.auth-has-value .auth-floating-label {
+  transform: translateY(-1.75rem) scale(0.85);
+  transform-origin: left center;
+  font-size: 0.8rem;
+  color: var(--bs-primary);
+}
+
+.auth-input-wrap .auth-underline {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--bs-border-color);
+  border-radius: 1px;
+  overflow: hidden;
+  transition: background 0.2s ease;
+  pointer-events: none;
+}
+
+.auth-input-wrap .auth-underline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--bs-primary);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.3s ease;
+  border-radius: 1px;
+}
+
+.auth-input-wrap input:focus ~ .auth-underline::after {
+  transform: scaleX(1);
+}
+
+.auth-input-wrap input {
+  width: 100%;
+  padding: 0.85rem 1rem 0.85rem 2.75rem;
+  font-size: 1rem;
+  border: none;
+  border-bottom: 1px solid var(--bs-border-color);
+  background: transparent;
+  border-radius: 0;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+.auth-input-wrap input::placeholder {
+  color: transparent;
+}
+
+.auth-input-wrap input:focus {
+  border-bottom-color: transparent;
+  box-shadow: none;
+}
+
+/* Remember me row */
+.auth-form-animated .auth-remember-row {
+  opacity: 0;
+  animation: auth-fade-in-up 0.45s ease-out 0.58s forwards;
+}
+
+/* Submit button */
+.auth-form-animated .auth-btn-submit {
+  opacity: 0;
+  animation: auth-fade-in-up 0.45s ease-out 0.66s forwards;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-form-animated .auth-btn-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.35);
+}
+
+.auth-form-animated .auth-btn-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Footer line */
+.auth-form-animated .auth-footer-line {
+  opacity: 0;
+  animation: auth-fade-in-up 0.4s ease-out 0.75s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-form-animated .auth-brand,
+  .auth-form-animated .auth-form-group,
+  .auth-form-animated .auth-remember-row,
+  .auth-form-animated .auth-btn-submit,
+  .auth-form-animated .auth-footer-line {
+    animation: none;
+    opacity: 1;
+  }
+  .auth-input-wrap .auth-floating-label,
+  .auth-input-wrap .auth-input-icon,
+  .auth-input-wrap .auth-underline::after,
+  .auth-input-wrap input {
+    transition-duration: 0.01ms;
+  }
+}

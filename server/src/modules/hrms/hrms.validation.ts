@@ -1,0 +1,3 @@
+/**
+ * HRMS validation schemas (placeholder).
+ */

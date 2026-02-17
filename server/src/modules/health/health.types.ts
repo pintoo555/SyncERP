@@ -1,0 +1,3 @@
+/**
+ * Health module types – placeholder.
+ */

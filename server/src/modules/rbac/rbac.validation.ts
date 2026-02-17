@@ -1,0 +1,3 @@
+/**
+ * RBAC validation schemas (placeholder).
+ */

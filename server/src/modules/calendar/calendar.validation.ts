@@ -1,0 +1,3 @@
+/**
+ * Calendar validation – placeholder.
+ */

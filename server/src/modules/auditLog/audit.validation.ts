@@ -1,0 +1,3 @@
+/**
+ * Audit validation schemas (placeholder).
+ */

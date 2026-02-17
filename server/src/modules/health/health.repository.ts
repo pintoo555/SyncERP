@@ -1,0 +1,3 @@
+/**
+ * Health repository – placeholder.
+ */

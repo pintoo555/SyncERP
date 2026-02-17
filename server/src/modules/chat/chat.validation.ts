@@ -1,0 +1,3 @@
+/**
+ * Chat validation schemas (placeholder).
+ */
