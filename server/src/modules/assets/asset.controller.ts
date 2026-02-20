@@ -64,7 +64,7 @@ export async function createAsset(req: AuthRequest, res: Response, next: NextFun
     audit(req, 'create', 'asset', String(asset.assetId));
     emitDashboardUpdate();
     const reqDb = await getRequest();
-    const nameResult = await reqDb.input('userId', req.user.userId).query('SELECT Name AS name FROM rb_users WHERE userid = @userId');
+    const nameResult = await reqDb.input('userId', req.user.userId).query('SELECT Name AS name FROM utbl_Users_Master WHERE UserId = @userId');
     const addedByName = (nameResult.recordset?.[0] as { name?: string } | undefined)?.name ?? req.user.email ?? 'Unknown';
     emitNewAsset({ assetId: asset.assetId, assetTag: asset.assetTag, addedByUserId: req.user.userId, addedByName });
     res.status(201).json({ success: true, data: asset });

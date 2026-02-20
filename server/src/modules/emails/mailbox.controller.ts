@@ -92,8 +92,8 @@ export async function listFolders(req: AuthRequest, res: Response, next: NextFun
     if (msg.includes('Invalid object name') && msg.includes('UserMailbox')) {
       return next(new AppError(503, 'Mailbox database table is missing. Please run migration 014_user_mailbox.sql.'));
     }
-    if (msg.includes('decrypt') || msg.includes('credentials could not be read')) {
-      return next(new AppError(400, 'Mailbox credentials could not be read. Please re-save your password in Email Settings.'));
+    if (msg.includes('decrypt') || msg.includes('credentials could not be read') || msg.includes('Invalid encrypted')) {
+      return next(new AppError(400, 'Mailbox credentials could not be read. Re-save your email and password in Emails > Settings.'));
     }
     if (code === 'ECONNREFUSED' || code === 'ETIMEDOUT' || code === 'ENOTFOUND' || msg.includes('connect') || msg.includes('Connection')) {
       return next(new AppError(400, 'Could not connect to mail server. Check IMAP host, port, and SSL in Email Settings.'));
@@ -104,8 +104,8 @@ export async function listFolders(req: AuthRequest, res: Response, next: NextFun
     if (msg.includes('wrong version number') || msg.includes('SSL routines') || msg.includes('ssl3_get_record') || msg.includes('ECONNRESET') && msg.includes('ssl')) {
       return next(new AppError(400, 'SSL/TLS mismatch: turn IMAP "SSL/TLS" OFF if your server uses port 143 (plain), or ON if it uses port 993. Same for SMTP (port 587 = usually no SSL; 465 = SSL).'));
     }
-    // Any other error: return 400 with actual message so user sees it instead of "Internal server error"
-    const safeMsg = msg && msg.length <= 400 && !msg.includes('\n') ? msg : 'Could not load folders. Check Email Settings or try again.';
+    // Any other error: return 400 with safe message so we never return 500
+    const safeMsg = (msg && msg.length <= 400 && !msg.includes('\n') ? msg : 'Could not load folders. Configure your email in Emails > Settings and try again.');
     return next(new AppError(400, safeMsg));
   }
 }
@@ -285,6 +285,19 @@ export async function searchMessages(req: AuthRequest, res: Response, next: Next
     const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit), 10) || 100));
     const result = await mailboxService.searchMessages(userId, folderPath, q, limit);
     res.json({ success: true, data: result.messages, total: result.total });
+  } catch (e) {
+    next(e);
+  }
+}
+
+/** POST /api/mailbox/folders/:path/archive-all - archive ALL messages in the folder (no limit). */
+export async function archiveAllInFolder(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const folderPath = decodeURIComponent((req.params as { path: string }).path);
+    const result = await mailboxService.archiveAllInFolder(userId, folderPath);
+    logAuditFromRequest(req, { eventType: 'update', entityType: 'mailbox_message', details: `archive all (${result.archived}) from ${folderPath}` });
+    res.json({ success: true, archived: result.archived });
   } catch (e) {
     next(e);
   }

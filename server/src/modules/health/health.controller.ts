@@ -83,14 +83,14 @@ export async function getUsers(req: AuthRequest, res: Response, next: NextFuncti
     let result: { recordset?: unknown[] };
     try {
       result = await reqDb.query(`
-        SELECT userid AS userId, Name AS name
-        FROM rb_users
+        SELECT UserId AS userId, Name AS name
+        FROM utbl_Users_Master
         WHERE (IsActive = 1 OR IsActive IS NULL)
         ORDER BY Name
       `);
     } catch {
       result = await reqDb.query(`
-        SELECT userid AS userId, Name AS name FROM rb_users ORDER BY Name
+        SELECT UserId AS userId, Name AS name FROM utbl_Users_Master ORDER BY Name
       `);
     }
     const rows = (result.recordset || []) as Array<{ userId?: number; userid?: number; name?: string; Name?: string }>;

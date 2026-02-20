@@ -26,6 +26,7 @@ import { branchContext } from './shared/middleware/branchContext';
 import apiRoutes from './routes';
 import { startScheduler } from './modules/cronJobs';
 import { setupRealtime } from './realtime/setup';
+import { pollEmailChannels } from './modules/leads/leadEmailPoller.service';
 
 const app = express();
 const server = createServer(app);
@@ -93,6 +94,20 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`CORS origins: ${config.corsAllowedOrigins.join(', ')}`);
   console.log(`DB target: ${config.db.server} / ${config.db.database}`);
   setImmediate(() => startScheduler());
+
+  // Poll email inbox channels every 60 seconds for lead emails
+  const POLL_INTERVAL_MS = 60_000;
+  setInterval(() => {
+    pollEmailChannels().catch((err) =>
+      console.error('[LeadEmailPoller] poll error:', err?.message || err)
+    );
+  }, POLL_INTERVAL_MS);
+  // Run first poll after a short delay to let DB connect
+  setTimeout(() => {
+    pollEmailChannels().catch((err) =>
+      console.error('[LeadEmailPoller] initial poll error:', err?.message || err)
+    );
+  }, 10_000);
 });
 
 export { app, server };

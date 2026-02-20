@@ -46,7 +46,7 @@ export async function getReportWarranty(): Promise<WarrantyReportRow[]> {
     FROM react_Asset a
     LEFT JOIN react_AssetCategory c ON c.CategoryID = a.CategoryID
     LEFT JOIN react_Location l ON l.LocationID = a.LocationID
-    LEFT JOIN rb_users u ON u.userid = a.CurrentAssignedToUserID
+    LEFT JOIN utbl_Users_Master u ON u.UserId = a.CurrentAssignedToUserID
     WHERE a.IsDeleted = 0 AND a.WarrantyExpiry IS NOT NULL
     ORDER BY a.WarrantyExpiry ASC
   `);
@@ -76,9 +76,9 @@ export async function getReportAssignments(days: number = 30): Promise<Assignmen
     FROM react_AssetAssignment aa
     INNER JOIN react_Asset a ON a.AssetID = aa.AssetID AND a.IsDeleted = 0
     LEFT JOIN react_AssetCategory c ON c.CategoryID = a.CategoryID
-    INNER JOIN rb_users u1 ON u1.userid = aa.AssignedToUserID
-    INNER JOIN rb_users u2 ON u2.userid = aa.AssignedByUserID
-    LEFT JOIN rb_users u3 ON u3.userid = aa.ReturnedByUserID
+    INNER JOIN utbl_Users_Master u1 ON u1.UserId = aa.AssignedToUserID
+    INNER JOIN utbl_Users_Master u2 ON u2.UserId = aa.AssignedByUserID
+    LEFT JOIN utbl_Users_Master u3 ON u3.UserId = aa.ReturnedByUserID
     WHERE aa.AssignedAt >= DATEADD(day, -@days, GETDATE())
     ORDER BY aa.AssignedAt DESC
   `);

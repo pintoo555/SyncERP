@@ -149,7 +149,7 @@ export interface AuditUserRow {
 
 export async function getAuditOverview(): Promise<AuditUserRow[]> {
   const req1 = await getRequest();
-  const usersResult = await req1.query(`SELECT UserID AS userId, Name AS name, Email AS email FROM rb_users WHERE IsActive = 1 ORDER BY Name`);
+  const usersResult = await req1.query(`SELECT UserId AS userId, Name AS name, Email AS email FROM utbl_Users_Master WHERE IsActive = 1 ORDER BY Name`);
   const users = (usersResult.recordset || []) as { userId: number; name: string; email: string }[];
 
   const req2 = await getRequest();

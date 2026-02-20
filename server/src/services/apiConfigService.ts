@@ -18,6 +18,9 @@ export interface ApiConfigRow {
   updatedAt: string;
 }
 
+/** Service codes that are NOT AI (excluded from Chat Improve / AI dropdowns). */
+const NON_AI_SERVICE_CODES = new Set(['GSTZEN', 'GSTZEN.']);
+
 /** List active configs for dropdown (serviceCode, displayName only) - no permission check, used by Chat. */
 export async function listActiveForDropdown(): Promise<Array<{ serviceCode: string; displayName: string }>> {
   const req = await getRequest();
@@ -28,6 +31,14 @@ export async function listActiveForDropdown(): Promise<Array<{ serviceCode: stri
     ORDER BY DisplayName
   `);
   return (result.recordset ?? []) as Array<{ serviceCode: string; displayName: string }>;
+}
+
+/** List active AI-only configs for Chat Improve dropdown (excludes GSTZEN and other non-AI APIs). */
+export async function listActiveAiForDropdown(): Promise<Array<{ serviceCode: string; displayName: string }>> {
+  const all = await listActiveForDropdown();
+  return all.filter(
+    (row) => !NON_AI_SERVICE_CODES.has((row.serviceCode || '').trim().toUpperCase())
+  );
 }
 
 /** List all configs; mask API key with last 4 chars only for list view */

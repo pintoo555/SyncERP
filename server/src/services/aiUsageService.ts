@@ -90,7 +90,7 @@ export async function getAnalytics(filters: AnalyticsFilters = {}): Promise<Usag
     return r.query(query);
   };
 
-  const baseFrom = `${TABLE} l LEFT JOIN dbo.rb_users u ON u.userid = l.UserID`;
+  const baseFrom = `${TABLE} l LEFT JOIN dbo.utbl_Users_Master u ON u.UserId = l.UserID`;
   const [totalRes, byUserRes, byModelRes, byFeatureRes, recentRes] = await Promise.all([
     runQuery(`SELECT COUNT(*) AS total FROM ${baseFrom} WHERE ${whereClause}`),
     runQuery(`SELECT l.UserID AS userId, u.Name AS userName, COUNT(*) AS callCount FROM ${baseFrom} WHERE ${whereClause} GROUP BY l.UserID, u.Name ORDER BY callCount DESC`),

@@ -27,6 +27,7 @@ import { settingsRoutes, apiConfigRoutes } from '../modules/settings';
 import { aiAnalyticsRoutes } from '../modules/aiAnalytics';
 import { aiRoutes } from '../modules/ai';
 import { emailSettingsRoutes, mailboxRoutes } from '../modules/emails';
+import { emailAdminRoutes } from '../modules/emailAdmin';
 import { hrmsRoutes } from '../modules/hrms';
 import { healthRoutes } from '../modules/health';
 import { jobCardRoutes } from '../modules/jobcards';
@@ -37,6 +38,9 @@ import { callMatrixRoutes } from '../modules/callMatrix';
 import { cronJobsRoutes } from '../modules/cronJobs';
 import { organizationRoutes } from '../modules/organization';
 import { clientRoutes, industryRoutes } from '../modules/clients';
+import { announcementRoutes } from '../modules/announcements';
+import { emailTemplateRoutes } from '../modules/emailTemplates';
+import { leadRoutes } from '../modules/leads';
 
 const router = Router();
 
@@ -62,6 +66,7 @@ router.use('/ai', aiRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/email-settings', emailSettingsRoutes);
 router.use('/mailbox', mailboxRoutes);
+router.use('/email-admin', emailAdminRoutes);
 router.use('/hrms', hrmsRoutes);
 router.use('/health', healthRoutes);
 router.use('/jobcards', jobCardRoutes);
@@ -73,5 +78,8 @@ router.use('/cron-jobs', cronJobsRoutes);
 router.use('/organization', organizationRoutes);
 router.use('/clients', clientRoutes);
 router.use('/industries', industryRoutes);
+router.use('/announcements', announcementRoutes);
+router.use('/email-templates', emailTemplateRoutes);
+router.use('/leads', leadRoutes);
 
 export default router;

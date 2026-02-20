@@ -349,8 +349,8 @@ export async function deleteOrgDepartment(req: AuthRequest, res: Response, next:
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return next(new AppError(400, 'Invalid id'));
-    const ok = await branchService.deleteOrgDepartment(id);
-    if (!ok) return next(new AppError(404, 'Department not found'));
+    const result = await branchService.deleteOrgDepartment(id);
+    if (!result.success) return next(new AppError(400, result.error || 'Cannot delete department'));
     logAuditFromRequest(req, { eventType: 'delete', entityType: 'utbl_Org_Department', entityId: String(id) });
     emitOrgChanged({ action: 'delete', entityType: 'department', entityId: id });
     res.json({ success: true });

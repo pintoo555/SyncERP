@@ -29,9 +29,14 @@ export async function listIndustries(activeOnly = false): Promise<IndustryRow[]>
     ORDER BY IndustryName
   `);
   return (result.recordset || []).map((r: any) => ({
-    ...r,
+    id: r.id,
+    industryName: r.industryName ?? r.IndustryName ?? '',
+    industryCategory: r.industryCategory ?? r.IndustryCategory ?? 'Other',
+    isActive: !!r.isActive,
     createdOn: dateToIso(r.createdOn),
-    updatedOn: dateToIsoOrNull(r.updatedOn),
+    createdBy: r.createdBy ?? r.CreatedBy ?? null,
+    updatedOn: dateToIsoOrNull(r.updatedOn ?? r.UpdatedOn),
+    updatedBy: r.updatedBy ?? r.UpdatedBy ?? null,
   }));
 }
 
@@ -43,9 +48,18 @@ export async function getIndustry(id: number): Promise<IndustryRow | null> {
            UpdatedOn AS updatedOn, UpdatedBy AS updatedBy
     FROM ${INDUSTRY} WHERE Id = @id
   `);
-  const row = result.recordset?.[0];
-  if (!row) return null;
-  return { ...row, createdOn: dateToIso(row.createdOn), updatedOn: dateToIsoOrNull(row.updatedOn) };
+  const r = result.recordset?.[0];
+  if (!r) return null;
+  return {
+    id: r.id,
+    industryName: r.industryName ?? r.IndustryName ?? '',
+    industryCategory: r.industryCategory ?? r.IndustryCategory ?? 'Other',
+    isActive: !!r.isActive,
+    createdOn: dateToIso(r.createdOn),
+    createdBy: r.createdBy ?? r.CreatedBy ?? null,
+    updatedOn: dateToIsoOrNull(r.updatedOn ?? r.UpdatedOn),
+    updatedBy: r.updatedBy ?? r.UpdatedBy ?? null,
+  };
 }
 
 export async function createIndustry(data: IndustryCreateData, userId: number | null): Promise<number> {

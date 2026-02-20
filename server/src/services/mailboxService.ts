@@ -11,7 +11,6 @@ import nodemailer from 'nodemailer';
 
 const SCHEMA = config.db.schema || 'dbo';
 const TABLE = `[${SCHEMA}].[react_UserMailbox]`;
-const PROFILE_TABLE = `[${SCHEMA}].[hrms_EmployeeProfile]`;
 
 const DEFAULT_IMAP_HOST = process.env.MAILBOX_IMAP_HOST || 'localhost';
 const DEFAULT_IMAP_PORT = parseInt(process.env.MAILBOX_IMAP_PORT || '143', 10);
@@ -66,6 +65,15 @@ export interface MailMessageBody {
   attachments: Array<{ filename: string; contentType: string; size: number; index: number }>;
 }
 
+function pick(obj: Record<string, unknown> | null | undefined, ...keys: string[]): string | undefined {
+  if (!obj) return undefined;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v != null && typeof v === 'string') return v;
+  }
+  return undefined;
+}
+
 async function getCredentialsRow(userId: number): Promise<{
   Email: string;
   EncryptedPassword: string;
@@ -76,30 +84,30 @@ async function getCredentialsRow(userId: number): Promise<{
   SmtpPort: number;
   SmtpSecure: boolean;
 } | null> {
-  const req = await getRequest();
-  const profileResult = await req.input('userId', userId).query(`
-    SELECT InternalEmail AS Email, InternalEmailPassword AS EncryptedPassword
-    FROM ${PROFILE_TABLE} WHERE UserID = @userId AND InternalEmail IS NOT NULL AND InternalEmail <> '' AND InternalEmailPassword IS NOT NULL
-  `);
-  const profileRow = (profileResult.recordset as any[])?.[0];
-  if (profileRow?.Email && profileRow?.EncryptedPassword) {
+  try {
+    const req = await getRequest();
+    const result = await req.input('userId', userId).query(`
+      SELECT Email, EncryptedPassword, ImapHost, ImapPort, ImapSecure, SmtpHost, SmtpPort, SmtpSecure
+      FROM ${TABLE} WHERE UserId = @userId
+    `);
+    const row = (result.recordset as Record<string, unknown>[])?.[0] as Record<string, unknown> | undefined;
+    if (!row) return null;
+    const e = pick(row, 'Email', 'email');
+    const p = pick(row, 'EncryptedPassword', 'encryptedPassword');
+    if (!e || !p) return null;
     return {
-      Email: profileRow.Email,
-      EncryptedPassword: profileRow.EncryptedPassword,
-      ImapHost: DEFAULT_IMAP_HOST,
-      ImapPort: DEFAULT_IMAP_PORT,
-      ImapSecure: DEFAULT_IMAP_SECURE,
-      SmtpHost: DEFAULT_SMTP_HOST,
-      SmtpPort: DEFAULT_SMTP_PORT,
-      SmtpSecure: DEFAULT_SMTP_SECURE,
+      Email: e,
+      EncryptedPassword: p,
+      ImapHost: (pick(row, 'ImapHost', 'imapHost') || DEFAULT_IMAP_HOST) as string,
+      ImapPort: Number(row.ImapPort ?? row.imapPort ?? DEFAULT_IMAP_PORT) || DEFAULT_IMAP_PORT,
+      ImapSecure: Boolean(row.ImapSecure ?? row.imapSecure ?? DEFAULT_IMAP_SECURE),
+      SmtpHost: (pick(row, 'SmtpHost', 'smtpHost') || DEFAULT_SMTP_HOST) as string,
+      SmtpPort: Number(row.SmtpPort ?? row.smtpPort ?? DEFAULT_SMTP_PORT) || DEFAULT_SMTP_PORT,
+      SmtpSecure: Boolean(row.SmtpSecure ?? row.smtpSecure ?? DEFAULT_SMTP_SECURE),
     };
+  } catch {
+    return null;
   }
-  const result = await req.input('userId', userId).query(`
-    SELECT Email, EncryptedPassword, ImapHost, ImapPort, ImapSecure, SmtpHost, SmtpPort, SmtpSecure
-    FROM ${TABLE} WHERE UserId = @userId
-  `);
-  const row = (result.recordset as any[])?.[0];
-  return row ?? null;
 }
 
 /** Get credentials for API response (no password). */
@@ -638,6 +646,41 @@ export async function archiveMessages(
     try {
       const range = uids.join(',');
       await client.messageMove(range, archivePath, { uid: true });
+    } finally {
+      lock.release();
+    }
+  } finally {
+    client.logout().catch(() => {});
+  }
+}
+
+/** Archive all messages in a folder – move entire folder contents to Archive. */
+export async function archiveAllInFolder(userId: number, folderPath: string): Promise<{ archived: number }> {
+  const cred = await getCredentialsWithPassword(userId);
+  if (!cred) throw new Error('Mailbox not configured.');
+  const client = createImapClient(cred);
+  try {
+    await client.connect();
+    const boxes = await client.list();
+    let archiveFolder = boxes.find((b: any) =>
+      b.specialUse === '\\Archive' || (b.path || '').toLowerCase() === 'archive'
+    );
+    if (!archiveFolder) {
+      await client.mailboxCreate('Archive');
+      archiveFolder = { path: 'Archive' } as any;
+    }
+    const archivePath = archiveFolder!.path;
+    const pathToUse = normalizeFolderPath(folderPath);
+    if (archivePath.toLowerCase() === pathToUse.toLowerCase()) return { archived: 0 };
+    const lock = await client.getMailboxLock(pathToUse);
+    try {
+      const existsBefore = (client.mailbox as { exists?: number })?.exists ?? 0;
+      if (existsBefore < 1) return { archived: 0 };
+      const result = await client.messageMove('1:*', archivePath, { uid: false });
+      const count = result && typeof result === 'object' && (result as { uidMap?: Map<unknown, unknown> }).uidMap
+        ? (result as { uidMap: Map<unknown, unknown> }).uidMap.size
+        : existsBefore;
+      return { archived: count };
     } finally {
       lock.release();
     }

@@ -25,6 +25,37 @@ import type {
 const SCHEMA = config.db.schema || 'dbo';
 const TABLE = `[${SCHEMA}].[Matrix_CallLogs]`;
 
+function isTableMissingError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /Invalid object name|does not exist/i.test(msg) && /Matrix_CallLogs/i.test(msg);
+}
+
+function emptyDashboardStats(): CallMatrixDashboardStats {
+  const hours: { hour: number; count: number }[] = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0 }));
+  return {
+    totalCalls: 0,
+    incomingCount: 0,
+    outgoingCount: 0,
+    avgDurationSeconds: 0,
+    callsByDay: [],
+    callsByDirection: [],
+    callsByType: [],
+    topCallers: [],
+    topCallees: [],
+    durationDistribution: [
+      { label: '0–1 min', minSeconds: 0, maxSeconds: 60, count: 0 },
+      { label: '1–5 min', minSeconds: 61, maxSeconds: 300, count: 0 },
+      { label: '5–15 min', minSeconds: 301, maxSeconds: 900, count: 0 },
+      { label: '15+ min', minSeconds: 901, maxSeconds: null, count: 0 },
+    ],
+    callsByHour: hours,
+    heatmap: [],
+    internalCount: 0,
+    externalCount: 0,
+    internalByExtension: [],
+  };
+}
+
 const SORT_COLUMN_MAP: Record<string, string> = {
   callDate: 'CallDate',
   callTime: 'CallTime',
@@ -44,6 +75,15 @@ function toIso(row: Record<string, unknown>, key: string, timeZone: string): str
 }
 
 export async function listCallLogs(query: CallLogListQuery): Promise<{ data: CallLogRow[]; total: number }> {
+  try {
+    return await listCallLogsImpl(query);
+  } catch (err) {
+    if (isTableMissingError(err)) return { data: [], total: 0 };
+    throw err;
+  }
+}
+
+async function listCallLogsImpl(query: CallLogListQuery): Promise<{ data: CallLogRow[]; total: number }> {
   const offset = (query.page - 1) * query.pageSize;
   const sortCol = SORT_COLUMN_MAP[query.sortBy] ?? 'RecordingStart';
   const sortDir = (query.sortOrder ?? 'desc').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
@@ -173,6 +213,15 @@ const DATE_CLAUSE_DAYS = `CallDate >= DATEADD(DAY, -@days, CAST(GETDATE() AS DAT
 const DATE_CLAUSE_RANGE = `CallDate >= @dateFrom AND CallDate <= @dateTo`;
 
 export async function getDashboardStats(daysOrOptions: number | { days?: number; dateFrom?: string; dateTo?: string }): Promise<CallMatrixDashboardStats> {
+  try {
+    return await getDashboardStatsImpl(daysOrOptions);
+  } catch (err) {
+    if (isTableMissingError(err)) return emptyDashboardStats();
+    throw err;
+  }
+}
+
+async function getDashboardStatsImpl(daysOrOptions: number | { days?: number; dateFrom?: string; dateTo?: string }): Promise<CallMatrixDashboardStats> {
   const days = typeof daysOrOptions === 'number' ? daysOrOptions : Math.min(365, Math.max(1, daysOrOptions.days ?? 30));
   const dateFrom = typeof daysOrOptions === 'object' ? daysOrOptions.dateFrom : undefined;
   const dateTo = typeof daysOrOptions === 'object' ? daysOrOptions.dateTo : undefined;

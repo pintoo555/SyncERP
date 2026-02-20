@@ -138,7 +138,7 @@ export async function listAssets(query: AssetListQueryInput): Promise<{ data: As
       LEFT JOIN react_AssetModel m ON m.ModelID = a.ModelID
       LEFT JOIN react_Vendors v ON v.VendorID = a.VendorID
       LEFT JOIN react_Location l ON l.LocationID = a.LocationID
-      LEFT JOIN rb_users u2 ON u2.userid = a.CurrentAssignedToUserID
+      LEFT JOIN utbl_Users_Master u2 ON u2.UserId = a.CurrentAssignedToUserID
       WHERE a.IsDeleted = 0
         AND (0 = @hasStatus OR a.Status = @status)
         AND (0 = @hasCategory OR a.CategoryID = @categoryId)
@@ -193,7 +193,7 @@ export async function getAssetById(id: number, includeTabs: boolean = true): Pro
     LEFT JOIN react_AssetModel m ON m.ModelID = a.ModelID
     LEFT JOIN react_Vendors v ON v.VendorID = a.VendorID
     LEFT JOIN react_Location l ON l.LocationID = a.LocationID
-    LEFT JOIN rb_users u2 ON u2.userid = a.CurrentAssignedToUserID
+    LEFT JOIN utbl_Users_Master u2 ON u2.UserId = a.CurrentAssignedToUserID
     WHERE a.AssetID = @id
   `);
   const assetRow = assetResult.recordset[0] as AssetRecord | undefined;
@@ -216,9 +216,9 @@ export async function getAssetById(id: number, includeTabs: boolean = true): Pro
              CONVERT(NVARCHAR(10), aa.DueReturnDate, 120) AS dueReturnDate, CONVERT(NVARCHAR(19), aa.ReturnedAt, 120) AS returnedAt, u4.Name AS returnedByUserName,
              aa.Notes AS notes, aa.AssignmentType AS assignmentType
       FROM react_AssetAssignment aa
-      INNER JOIN rb_users u1 ON u1.userid = aa.AssignedToUserID
-      INNER JOIN rb_users u3 ON u3.userid = aa.AssignedByUserID
-      LEFT JOIN rb_users u4 ON u4.userid = aa.ReturnedByUserID
+      INNER JOIN utbl_Users_Master u1 ON u1.UserId = aa.AssignedToUserID
+      INNER JOIN utbl_Users_Master u3 ON u3.UserId = aa.AssignedByUserID
+      LEFT JOIN utbl_Users_Master u4 ON u4.UserId = aa.ReturnedByUserID
       WHERE aa.AssetID = @id ORDER BY aa.AssignedAt DESC
     `); })(),
     (async () => { const r = await getRequest(); return r.input('id', id).query(`
@@ -230,7 +230,7 @@ export async function getAssetById(id: number, includeTabs: boolean = true): Pro
       SELECT av.VerificationID AS verificationId, av.AssetID AS assetId, av.VerifiedAt AS verifiedAt, u.Name AS verifiedByUserName,
              l.LocationName AS locationName, av.Notes AS notes, av.VerifiedStatus AS verifiedStatus
       FROM react_AssetVerification av
-      INNER JOIN rb_users u ON u.userid = av.VerifiedByUserID
+      INNER JOIN utbl_Users_Master u ON u.UserId = av.VerifiedByUserID
       LEFT JOIN react_Location l ON l.LocationID = av.LocationID
       WHERE av.AssetID = @id ORDER BY av.VerifiedAt DESC
     `); })(),

@@ -47,7 +47,7 @@ export async function issueAsset(input: IssueInput, assignedByUserId: number): P
     if (asset.CurrentAssignedToUserID != null) throw new AppError(400, 'Asset is already assigned');
 
     const req2 = new sql.Request(transaction);
-    const userCheck = await req2.input('userId', input.assignedToUserId).query('SELECT userid FROM rb_users WHERE userid = @userId');
+    const userCheck = await req2.input('userId', input.assignedToUserId).query('SELECT UserId FROM utbl_Users_Master WHERE UserId = @userId');
     if (userCheck.recordset.length === 0) throw new AppError(400, 'Assigned-to user not found');
 
     const req3 = new sql.Request(transaction);
@@ -144,7 +144,7 @@ export async function transferAsset(input: TransferInput, transferredByUserId: n
     if (asset.CurrentAssignedToUserID !== input.fromUserId) throw new AppError(400, 'Asset is not currently assigned to the specified user');
 
     const req2 = new sql.Request(transaction);
-    const toUserCheck = await req2.input('userId', input.toUserId).query('SELECT userid FROM rb_users WHERE userid = @userId');
+    const toUserCheck = await req2.input('userId', input.toUserId).query('SELECT UserId FROM utbl_Users_Master WHERE UserId = @userId');
     if (toUserCheck.recordset.length === 0) throw new AppError(400, 'Transfer-to user not found');
 
     const req3 = new sql.Request(transaction);
@@ -209,9 +209,9 @@ export async function getAssignmentById(assignmentId: number): Promise<Assignmen
            CONVERT(NVARCHAR(19), aa.ReturnedAt, 120) AS returnedAt, u3.Name AS returnedByUserName, aa.Notes AS notes, aa.AssignmentType AS assignmentType
     FROM react_AssetAssignment aa
     INNER JOIN react_Asset a ON a.AssetID = aa.AssetID
-    INNER JOIN rb_users u1 ON u1.userid = aa.AssignedToUserID
-    INNER JOIN rb_users u2 ON u2.userid = aa.AssignedByUserID
-    LEFT JOIN rb_users u3 ON u3.userid = aa.ReturnedByUserID
+    INNER JOIN utbl_Users_Master u1 ON u1.UserId = aa.AssignedToUserID
+    INNER JOIN utbl_Users_Master u2 ON u2.UserId = aa.AssignedByUserID
+    LEFT JOIN utbl_Users_Master u3 ON u3.UserId = aa.ReturnedByUserID
     WHERE aa.AssignmentID = @assignmentId
   `);
   const row = result.recordset[0] as AssignmentRecord | undefined;
@@ -228,9 +228,9 @@ export async function getAssignmentHistoryByAssetId(assetId: number): Promise<As
            CONVERT(NVARCHAR(19), aa.ReturnedAt, 120) AS returnedAt, u3.Name AS returnedByUserName, aa.Notes AS notes, aa.AssignmentType AS assignmentType
     FROM react_AssetAssignment aa
     INNER JOIN react_Asset a ON a.AssetID = aa.AssetID
-    INNER JOIN rb_users u1 ON u1.userid = aa.AssignedToUserID
-    INNER JOIN rb_users u2 ON u2.userid = aa.AssignedByUserID
-    LEFT JOIN rb_users u3 ON u3.userid = aa.ReturnedByUserID
+    INNER JOIN utbl_Users_Master u1 ON u1.UserId = aa.AssignedToUserID
+    INNER JOIN utbl_Users_Master u2 ON u2.UserId = aa.AssignedByUserID
+    LEFT JOIN utbl_Users_Master u3 ON u3.UserId = aa.ReturnedByUserID
     WHERE aa.AssetID = @assetId ORDER BY aa.AssignedAt DESC
   `);
   return (result.recordset || []) as AssignmentRecord[];
@@ -253,9 +253,9 @@ export async function getAssignmentHistoryByUserId(userId: number): Promise<User
     FROM react_AssetAssignment aa
     INNER JOIN react_Asset a ON a.AssetID = aa.AssetID AND a.IsDeleted = 0
     LEFT JOIN react_AssetCategory c ON c.CategoryID = a.CategoryID
-    INNER JOIN rb_users u1 ON u1.userid = aa.AssignedToUserID
-    INNER JOIN rb_users u2 ON u2.userid = aa.AssignedByUserID
-    LEFT JOIN rb_users u3 ON u3.userid = aa.ReturnedByUserID
+    INNER JOIN utbl_Users_Master u1 ON u1.UserId = aa.AssignedToUserID
+    INNER JOIN utbl_Users_Master u2 ON u2.UserId = aa.AssignedByUserID
+    LEFT JOIN utbl_Users_Master u3 ON u3.UserId = aa.ReturnedByUserID
     WHERE aa.AssignedToUserID = @userId
     ORDER BY aa.AssignedAt DESC
   `);

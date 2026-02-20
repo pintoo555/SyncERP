@@ -1,5 +1,5 @@
 /**
- * Client module route definitions.
+ * Client module route definitions (with dashboard).
  */
 
 import { Router } from 'express';
@@ -14,6 +14,10 @@ clientRouter.use(requireAuth);
 // List & Create
 clientRouter.get('/', requirePermission('CLIENT.VIEW'), ctrl.listClients);
 clientRouter.post('/', requirePermission('CLIENT.CREATE'), ctrl.createClient);
+
+// Dashboard (must be above /:id to avoid route conflict)
+clientRouter.get('/dashboard', requirePermission('CLIENT.VIEW'), ctrl.getDashboard);
+clientRouter.get('/india-geojson', requirePermission('CLIENT.VIEW'), ctrl.getIndiaGeoJson);
 
 // GST Verification (must be above /:id to avoid route conflict)
 clientRouter.post('/verify-gst', requirePermission('CLIENT.CREATE'), ctrl.verifyGst);
@@ -48,6 +52,7 @@ clientRouter.get('/:id/contacts', requirePermission('CLIENT.VIEW'), ctrl.listCon
 clientRouter.post('/:id/contacts', requirePermission('CLIENT.EDIT'), ctrl.createContact);
 clientRouter.put('/:id/contacts/:contactId', requirePermission('CLIENT.EDIT'), ctrl.updateContact);
 clientRouter.post('/:id/contacts/:contactId/deactivate', requirePermission('CLIENT.EDIT'), ctrl.deactivateContact);
+clientRouter.post('/:id/contacts/:contactId/verify-whatsapp', requirePermission('CLIENT.EDIT'), ctrl.verifyWhatsAppContact);
 clientRouter.get('/:id/contacts/suggest-replacement/:contactId', requirePermission('CLIENT.VIEW'), ctrl.suggestReplacement);
 
 // Contact Remarks

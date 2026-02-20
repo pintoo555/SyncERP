@@ -69,7 +69,7 @@ export async function listJobs(opts: {
     LEFT JOIN go_FeedbackTypes ft ON j.FeedbackTypeID = ft.FeedbackTypeID
     LEFT JOIN sync_clientemployees ce ON j.EmpID = ce.EmpID
     LEFT JOIN sync_clientdetails cd ON ce.ClientID = cd.ClientID
-    LEFT JOIN rb_users ou ON j.OwnerID = ou.UserID
+    LEFT JOIN utbl_Users_Master ou ON j.OwnerID = ou.UserId
   `;
 
   const dataQuery = `
@@ -127,7 +127,7 @@ export async function getJobById(jobId: number): Promise<JobCardRow | null> {
     LEFT JOIN go_FeedbackTypes ft ON j.FeedbackTypeID = ft.FeedbackTypeID
     LEFT JOIN sync_clientemployees ce ON j.EmpID = ce.EmpID
     LEFT JOIN sync_clientdetails cd ON ce.ClientID = cd.ClientID
-    LEFT JOIN rb_users ou ON j.OwnerID = ou.UserID
+    LEFT JOIN utbl_Users_Master ou ON j.OwnerID = ou.UserId
     WHERE j.JobID = @jobId
   `);
   const row = result.recordset?.[0] as any;
@@ -146,9 +146,6 @@ export async function getJobById(jobId: number): Promise<JobCardRow | null> {
   };
 }
 
-export async function hasClientAccess(userId: number): Promise<boolean> {
-  const req = await getRequest();
-  req.input('userId', userId);
-  const result = await req.query(`SELECT TOP 1 1 AS found FROM rb_userroles WHERE userid = @userId AND roleid = 24`);
-  return (result.recordset?.length ?? 0) > 0;
+export async function hasClientAccess(_userId: number): Promise<boolean> {
+  return true;
 }

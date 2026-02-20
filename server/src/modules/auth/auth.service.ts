@@ -15,17 +15,15 @@ export async function validateLogin(usernameOrEmail: string, password: string): 
   const user = await authRepository.findUserByUsername(trimmed) ?? await authRepository.findUserByEmail(trimmed);
   if (!user) throw new AppError(401, 'Invalid credentials');
   if (!user.IsActive) throw new AppError(401, 'Account is inactive');
-  const stored = user.Password ?? '';
+  const stored = user.PasswordHash ?? '';
   let match = false;
-  if (stored.startsWith('$2a$') || stored.startsWith('$2b$') || stored.startsWith('$2y$')) {
+  if (isBcryptHash(stored)) {
     try {
       const bcrypt = await import('bcryptjs');
       match = bcrypt.compareSync(password, stored);
     } catch {
-      match = stored === password;
+      match = false;
     }
-  } else {
-    match = stored === password;
   }
   if (!match) throw new AppError(401, 'Invalid credentials');
   return user;
@@ -40,10 +38,8 @@ export async function changePassword(userId: number, currentPassword: string, ne
       const bcrypt = await import('bcryptjs');
       match = bcrypt.compareSync(currentPassword, stored);
     } catch {
-      match = stored === currentPassword;
+      match = false;
     }
-  } else {
-    match = stored === currentPassword;
   }
   if (!match) throw new AppError(400, 'Current password is incorrect');
   if (!newPassword || newPassword.length < 6) throw new AppError(400, 'New password must be at least 6 characters');
@@ -54,14 +50,11 @@ export async function changePassword(userId: number, currentPassword: string, ne
 
 export async function verifyPassword(userId: number, password: string): Promise<boolean> {
   const stored = await authRepository.getPasswordByUserId(userId);
-  if (!stored) return false;
-  if (isBcryptHash(stored)) {
-    try {
-      const bcrypt = await import('bcryptjs');
-      return bcrypt.compareSync(password, stored);
-    } catch {
-      return stored === password;
-    }
+  if (!stored || !isBcryptHash(stored)) return false;
+  try {
+    const bcrypt = await import('bcryptjs');
+    return bcrypt.compareSync(password, stored);
+  } catch {
+    return false;
   }
-  return stored === password;
 }

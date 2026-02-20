@@ -187,3 +187,31 @@ export function emitCalendarEventDeleted(eventId: number): void {
 export function emitOrgChanged(details?: { action?: string; entityType?: string; entityId?: string | number }): void {
   if (realtimeNs) realtimeNs.emit('org:changed', { ts: Date.now(), ...details });
 }
+
+/* ------------------------------------------------------------------ */
+/*  Lead Management / Team Inbox events                                 */
+/* ------------------------------------------------------------------ */
+
+export function emitLeadCreated(payload: { leadId: number; leadCode: string; contactName: string; createdByName: string }): void {
+  if (realtimeNs) realtimeNs.emit('lead:created', payload);
+}
+
+export function emitLeadStageChanged(payload: { leadId: number; leadCode: string; fromStage: string; toStage: string; changedByName: string }): void {
+  if (realtimeNs) realtimeNs.emit('lead:stage-changed', payload);
+}
+
+export function emitLeadScoreUpdated(payload: { leadId: number; leadCode: string; score: number; label: string }): void {
+  if (realtimeNs) realtimeNs.emit('lead:score-updated', payload);
+}
+
+export function emitPipelineUpdate(): void {
+  if (realtimeNs) realtimeNs.emit('lead:pipeline-update');
+}
+
+export function emitInboxNewMessage(payload: { conversationId: number; channelType: string; externalName: string; preview: string; unreadCount: number }): void {
+  if (realtimeNs) realtimeNs.emit('inbox:new-message', payload);
+}
+
+export function emitInboxConversationUpdated(payload: { conversationId: number; status?: string; assignedToUserId?: number | null }): void {
+  if (realtimeNs) realtimeNs.emit('inbox:conversation-updated', payload);
+}

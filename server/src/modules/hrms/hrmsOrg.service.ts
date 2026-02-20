@@ -19,7 +19,7 @@ const ORG_DESIG = `[${SCHEMA}].[utbl_Org_Designation]`;
 const ORG_TEAM = `[${SCHEMA}].[utbl_Org_Team]`;
 const ORG_MEMBER = `[${SCHEMA}].[utbl_Org_TeamMember]`;
 const ORG_HISTORY = `[${SCHEMA}].[utbl_Org_PromotionHistory]`;
-const USERS = `[${SCHEMA}].[rb_users]`;
+const USERS = `[${SCHEMA}].[utbl_Users_Master]`;
 const PROFILE = `[${SCHEMA}].[hrms_EmployeeProfile]`;
 const BRANCH_DEPT = `[${SCHEMA}].[utbl_BranchDepartment]`;
 const USER_BRANCH = `[${SCHEMA}].[utbl_UserBranchAccess]`;
@@ -91,10 +91,22 @@ export async function updateOrgDepartment(id: number, data: { departmentCode?: s
   return true;
 }
 
-export async function deleteOrgDepartment(id: number): Promise<boolean> {
+/** Delete a department only if it has no active teams and no employees assigned to it. */
+export async function deleteOrgDepartment(id: number): Promise<{ success: boolean; error?: string }> {
+  const checkReq = await getRequest();
+  checkReq.input('id', id);
+  const check = await checkReq.query(`
+    SELECT
+      (SELECT COUNT(*) FROM ${ORG_TEAM} WHERE DepartmentId = @id) AS teamCount,
+      (SELECT COUNT(*) FROM ${PROFILE} WHERE OrgDepartmentId = @id) AS employeeCount
+  `);
+  const { teamCount, employeeCount } = check.recordset[0] as { teamCount: number; employeeCount: number };
+  if (teamCount > 0) return { success: false, error: `Cannot delete: ${teamCount} team(s) still belong to this department` };
+  if (employeeCount > 0) return { success: false, error: `Cannot delete: ${employeeCount} employee(s) still assigned to this department` };
+
   const req = await getRequest();
   const result = await req.input('id', id).query(`DELETE FROM ${ORG_DEPT} WHERE Id = @id`);
-  return (result.rowsAffected[0] ?? 0) > 0;
+  return { success: (result.rowsAffected[0] ?? 0) > 0 };
 }
 
 export async function listOrgDesignations(departmentId: number): Promise<OrgDesignationRow[]> {
@@ -197,7 +209,29 @@ export async function getOrgTeam(id: number): Promise<OrgTeamRow | null> {
   };
 }
 
+/** Walk the ParentTeamId chain to detect cycles. Returns true if setting parentTeamId on teamId would create a loop. */
+async function wouldCreateCycle(teamId: number, parentTeamId: number | null | undefined): Promise<boolean> {
+  if (parentTeamId == null) return false;
+  if (parentTeamId === teamId) return true;
+  const visited = new Set<number>([teamId]);
+  let current: number | null = parentTeamId;
+  while (current != null) {
+    if (visited.has(current)) return true;
+    visited.add(current);
+    const r = await getRequest();
+    const res = await r.input('id', current).query(`SELECT ParentTeamId FROM ${ORG_TEAM} WHERE Id = @id`);
+    current = (res.recordset[0] as { ParentTeamId: number | null } | undefined)?.ParentTeamId ?? null;
+  }
+  return false;
+}
+
 export async function createOrgTeam(data: { departmentId: number; name: string; parentTeamId?: number | null; leadUserId?: number | null; level: number; icon?: string | null; themeColor?: string | null; branchId?: number | null }): Promise<number> {
+  if (data.parentTeamId != null) {
+    const parent = await getOrgTeam(data.parentTeamId);
+    if (!parent) throw new Error('Parent team not found');
+    if (parent.departmentId !== data.departmentId) throw new Error('Parent team must be in the same department');
+  }
+
   const req = await getRequest();
   req.input('departmentId', data.departmentId);
   req.input('name', (data.name || '').trim().slice(0, 200));
@@ -217,6 +251,10 @@ export async function createOrgTeam(data: { departmentId: number; name: string; 
 }
 
 export async function updateOrgTeam(id: number, data: { name?: string; departmentId?: number; parentTeamId?: number | null; leadUserId?: number | null; level?: number; icon?: string | null; themeColor?: string | null; branchId?: number | null }): Promise<boolean> {
+  if (data.parentTeamId !== undefined && await wouldCreateCycle(id, data.parentTeamId)) {
+    throw new Error('Cannot set parent: would create a circular hierarchy');
+  }
+
   const req = await getRequest();
   req.input('id', id);
   req.input('name', data.name !== undefined ? (data.name || '').trim().slice(0, 200) : null);
@@ -244,10 +282,34 @@ export async function updateOrgTeam(id: number, data: { name?: string; departmen
       UpdatedAt = GETDATE()
     WHERE Id = @id
   `);
+
+  // Issue 6: When team's department changes, update active members' profiles to match
+  if (data.departmentId !== undefined) {
+    const cascadeReq = await getRequest();
+    cascadeReq.input('teamId', id);
+    cascadeReq.input('newDeptId', data.departmentId);
+    await cascadeReq.query(`
+      UPDATE ${PROFILE} SET OrgDepartmentId = @newDeptId, UpdatedAt = GETDATE()
+      WHERE UserID IN (SELECT UserId FROM ${ORG_MEMBER} WHERE TeamId = @teamId AND LeftAt IS NULL)
+    `);
+  }
+
   return true;
 }
 
+/** Soft-remove a team: mark all active members as left, clear child teams' parent, then delete the team row.
+ *  Member history rows (LeftAt set) are preserved because we mark them before deleting. */
 export async function deleteOrgTeam(id: number): Promise<boolean> {
+  // Mark all active members as left (preserves history)
+  const leaveReq = await getRequest();
+  await leaveReq.input('teamId', id).query(`
+    UPDATE ${ORG_MEMBER} SET LeftAt = GETDATE() WHERE TeamId = @teamId AND LeftAt IS NULL
+  `);
+  // Detach child teams so they become root teams instead of being cascade-deleted
+  const detachReq = await getRequest();
+  await detachReq.input('id', id).query(`
+    UPDATE ${ORG_TEAM} SET ParentTeamId = NULL, UpdatedAt = GETDATE() WHERE ParentTeamId = @id
+  `);
   const req = await getRequest();
   const result = await req.input('id', id).query(`DELETE FROM ${ORG_TEAM} WHERE Id = @id`);
   return (result.rowsAffected[0] ?? 0) > 0;
@@ -267,8 +329,25 @@ export async function listOrgTeamMembers(teamId: number): Promise<OrgTeamMemberR
   }));
 }
 
-/** Assign or move user to team; records tenure (sets LeftAt on current membership, inserts new). */
+/** Assign or move user to team; records tenure (sets LeftAt on current membership, inserts new).
+ *  Validates that the user has branch access for the team's branch. */
 export async function assignUserToTeam(userId: number, teamId: number): Promise<void> {
+  const team = await getOrgTeam(teamId);
+  if (!team) throw new Error('Team not found');
+
+  // Issue 5: Validate branch access
+  if (team.branchId != null) {
+    const brReq = await getRequest();
+    brReq.input('userId', userId);
+    brReq.input('branchId', team.branchId);
+    const brRes = await brReq.query(`
+      SELECT 1 AS ok FROM ${USER_BRANCH} WHERE UserId = @userId AND BranchId = @branchId AND IsActive = 1
+    `);
+    if (!brRes.recordset.length) {
+      throw new Error(`User does not have access to branch ${team.branchId}; grant branch access first`);
+    }
+  }
+
   const req1 = await getRequest();
   await req1.input('userId', userId).query(`
     UPDATE ${ORG_MEMBER} SET LeftAt = GETDATE() WHERE UserId = @userId AND LeftAt IS NULL
@@ -279,7 +358,17 @@ export async function assignUserToTeam(userId: number, teamId: number): Promise<
   `);
 }
 
-/** Move user to another team; records tenure. Enforces same-department rule. */
+/** Issue 2: Remove a user from their current team without assigning to a new one. */
+export async function removeUserFromTeam(userId: number): Promise<boolean> {
+  const req = await getRequest();
+  req.input('userId', userId);
+  const result = await req.query(`
+    UPDATE ${ORG_MEMBER} SET LeftAt = GETDATE() WHERE UserId = @userId AND LeftAt IS NULL
+  `);
+  return (result.rowsAffected[0] ?? 0) > 0;
+}
+
+/** Move user to another team; records tenure. Enforces same-department and branch-access rules. */
 export async function moveUserToTeam(userId: number, toTeamId: number): Promise<{ success: boolean; error?: string }> {
   const toTeam = await getOrgTeam(toTeamId);
   if (!toTeam) return { success: false, error: 'Target team not found' };
@@ -289,8 +378,12 @@ export async function moveUserToTeam(userId: number, toTeamId: number): Promise<
     return { success: false, error: 'Cannot move user to a team in a different department' };
   }
 
-  await assignUserToTeam(userId, toTeamId);
-  return { success: true };
+  try {
+    await assignUserToTeam(userId, toTeamId);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Failed to move user' };
+  }
 }
 
 /** Team IDs the current user can see: all if hasHrmsEdit, else teams where user is lead. */
@@ -304,11 +397,12 @@ export async function getTeamsForCurrentUser(userId: number, hasHrmsEdit: boolea
   return rows.map((r) => r.Id);
 }
 
+/** Issue 8: Optimized org tree — fetches teams, leads, and members in bulk (3 queries total instead of N+1). */
 export async function getOrgTree(departmentId?: number, teamIdsFilter: number[] | null = null, branchId?: number): Promise<{ nodes: OrgTreeNode[]; edges: { source: string; target: string }[] }> {
-  const req = await getRequest();
-  req.input('departmentId', departmentId ?? null);
-  req.input('branchId', branchId ?? null);
-  const deptResult = await req.query(`
+  const deptReq = await getRequest();
+  deptReq.input('departmentId', departmentId ?? null);
+  deptReq.input('branchId', branchId ?? null);
+  const deptResult = await deptReq.query(`
     SELECT d.Id AS id, d.DepartmentCode AS departmentCode, d.DepartmentName AS departmentName
     FROM ${ORG_DEPT} d
     WHERE (@departmentId IS NULL OR d.Id = @departmentId) AND d.IsActive = 1
@@ -317,58 +411,84 @@ export async function getOrgTree(departmentId?: number, teamIdsFilter: number[] 
     ORDER BY d.SortOrder, d.DepartmentName
   `);
   const departments = (deptResult.recordset || []) as { id: number; departmentCode: string; departmentName: string }[];
+  if (!departments.length) return { nodes: [], edges: [] };
+
+  const deptIds = departments.map((d) => d.id);
+  const deptIdList = deptIds.join(',');
+
+  // Bulk-fetch all teams for matching departments
+  const teamReq = await getRequest();
+  teamReq.input('branchId', branchId ?? null);
+  const teamResult = await teamReq.query(`
+    SELECT t.Id AS id, t.DepartmentId AS departmentId, t.Name AS name, t.ParentTeamId AS parentTeamId,
+           t.LeadUserId AS leadUserId, t.Level AS level,
+           ISNULL(t.Icon, '') AS icon, ISNULL(t.ThemeColor, '') AS themeColor,
+           lu.Name AS leadUserName
+    FROM ${ORG_TEAM} t
+    LEFT JOIN ${USERS} lu ON lu.UserId = t.LeadUserId
+    WHERE t.DepartmentId IN (${deptIdList})
+      AND (@branchId IS NULL OR t.BranchId = @branchId)
+    ORDER BY t.DepartmentId, t.Level, t.Name
+  `);
+  type TeamRow = { id: number; departmentId: number; name: string; parentTeamId: number | null; leadUserId: number | null; level: number; icon: string; themeColor: string; leadUserName: string | null };
+  const allTeams = (teamResult.recordset || []) as TeamRow[];
+
+  const visibleTeamIds = allTeams.map((t) => t.id);
+  if (!visibleTeamIds.length) {
+    return { nodes: departments.map((d) => ({ id: `dept-${d.id}`, type: 'department' as const, parentId: null, data: { label: d.departmentName, code: d.departmentCode }, departmentId: d.id })), edges: [] };
+  }
+  const teamIdList = visibleTeamIds.join(',');
+
+  // Bulk-fetch all active members for all teams
+  const memReq = await getRequest();
+  const memResult = await memReq.query(`
+    SELECT m.TeamId AS teamId, m.UserId AS userId, u.Name AS name, des.Name AS designationName,
+           p.PhotoUrl AS photoUrl, odept.DepartmentName AS departmentName,
+           p.OrgDepartmentId AS orgDepartmentId
+    FROM ${ORG_MEMBER} m
+    INNER JOIN ${USERS} u ON u.UserId = m.UserId
+    LEFT JOIN ${PROFILE} p ON p.UserID = m.UserId
+    LEFT JOIN ${ORG_DESIG} des ON des.Id = p.OrgDesignationId
+    LEFT JOIN ${ORG_DEPT} odept ON odept.Id = p.OrgDepartmentId
+    WHERE m.TeamId IN (${teamIdList}) AND m.LeftAt IS NULL
+  `);
+  type MemberRow = { teamId: number; userId: number; name: string; designationName: string | null; photoUrl: string | null; departmentName: string | null; orgDepartmentId: number | null };
+  const allMembers = (memResult.recordset || []) as MemberRow[];
+
+  // Group teams by department, members by team
+  const teamsByDept = new Map<number, TeamRow[]>();
+  for (const t of allTeams) {
+    const list = teamsByDept.get(t.departmentId) || [];
+    list.push(t);
+    teamsByDept.set(t.departmentId, list);
+  }
+  const membersByTeam = new Map<number, MemberRow[]>();
+  for (const m of allMembers) {
+    const list = membersByTeam.get(m.teamId) || [];
+    list.push(m);
+    membersByTeam.set(m.teamId, list);
+  }
+
   const nodes: OrgTreeNode[] = [];
   const edges: { source: string; target: string }[] = [];
   const teamIdsSet = teamIdsFilter == null ? null : new Set(teamIdsFilter);
 
-  type TeamRow = { id: number; name: string; parentTeamId: number | null; leadUserId: number | null; level: number; icon: string; themeColor: string };
-
   for (const d of departments) {
     const deptNodeId = `dept-${d.id}`;
-    nodes.push({
-      id: deptNodeId,
-      type: 'department',
-      parentId: null,
-      data: { label: d.departmentName, code: d.departmentCode },
-      departmentId: d.id,
-    });
+    nodes.push({ id: deptNodeId, type: 'department', parentId: null, data: { label: d.departmentName, code: d.departmentCode }, departmentId: d.id });
 
-    const teamReq = await getRequest();
-    teamReq.input('departmentId', d.id);
-    teamReq.input('branchId', branchId ?? null);
-    const teamResult = await teamReq.query(`
-      SELECT Id AS id, Name AS name, ParentTeamId AS parentTeamId, LeadUserId AS leadUserId, Level AS level,
-             ISNULL(Icon, '') AS icon, ISNULL(ThemeColor, '') AS themeColor
-      FROM ${ORG_TEAM} WHERE DepartmentId = @departmentId
-        AND (@branchId IS NULL OR BranchId = @branchId)
-      ORDER BY Level, Name
-    `);
-    const teams = (teamResult.recordset || []) as TeamRow[];
-    const teamById = new Map(teams.map((t) => [t.id, t]));
-
+    const teams = teamsByDept.get(d.id) || [];
     const addedTeamIds = new Set<number>();
-    const teamLeadNames = new Map<number, string>();
-    for (const t of teams) {
-      if (t.leadUserId != null) {
-        const lReq = await getRequest();
-        const lRes = await lReq.input('uid', t.leadUserId).query(`SELECT Name FROM ${USERS} WHERE userid = @uid`);
-        const lName = (lRes.recordset[0] as { Name?: string })?.Name;
-        if (lName) teamLeadNames.set(t.id, lName);
-      }
-    }
+
     function addTeamNode(t: TeamRow, parentId: string) {
       if (teamIdsSet != null && !teamIdsSet.has(t.id)) return;
       if (addedTeamIds.has(t.id)) return;
       addedTeamIds.add(t.id);
       const teamNodeId = `team-${t.id}`;
       nodes.push({
-        id: teamNodeId,
-        type: 'team',
-        parentId,
-        data: { label: t.name, level: t.level, leadUserId: t.leadUserId, leadUserName: teamLeadNames.get(t.id) || null, icon: t.icon || undefined, themeColor: t.themeColor || undefined },
-        departmentId: d.id,
-        teamId: t.id,
-        level: t.level,
+        id: teamNodeId, type: 'team', parentId,
+        data: { label: t.name, level: t.level, leadUserId: t.leadUserId, leadUserName: t.leadUserName || null, icon: t.icon || undefined, themeColor: t.themeColor || undefined },
+        departmentId: d.id, teamId: t.id, level: t.level,
       });
       edges.push({ source: parentId, target: teamNodeId });
     }
@@ -381,50 +501,23 @@ export async function getOrgTree(departmentId?: number, teamIdsFilter: number[] 
       changed = false;
       for (const t of childTeams) {
         if (addedTeamIds.has(t.id)) continue;
-        const parentId = t.parentTeamId != null ? `team-${t.parentTeamId}` : null;
-        if (parentId && nodes.some((n) => n.id === parentId)) {
-          addTeamNode(t, parentId);
-          changed = true;
-        }
+        const pid = t.parentTeamId != null ? `team-${t.parentTeamId}` : null;
+        if (pid && addedTeamIds.has(t.parentTeamId!)) { addTeamNode(t, pid); changed = true; }
       }
     }
 
     for (const t of teams) {
       if (teamIdsSet != null && !teamIdsSet.has(t.id)) continue;
+      if (!addedTeamIds.has(t.id)) continue;
       const teamNodeId = `team-${t.id}`;
-      const memReq = await getRequest();
-      memReq.input('teamId', t.id);
-      const memResult = await memReq.query(`
-        SELECT m.UserId AS userId, u.Name AS name, des.Name AS designationName,
-               p.PhotoUrl AS photoUrl, odept.DepartmentName AS departmentName,
-               p.OrgDepartmentId AS orgDepartmentId
-        FROM ${ORG_MEMBER} m
-        INNER JOIN ${USERS} u ON u.userid = m.UserId
-        LEFT JOIN ${PROFILE} p ON p.UserID = m.UserId
-        LEFT JOIN ${ORG_DESIG} des ON des.Id = p.OrgDesignationId
-        LEFT JOIN ${ORG_DEPT} odept ON odept.Id = p.OrgDepartmentId
-        WHERE m.TeamId = @teamId AND m.LeftAt IS NULL
-      `);
-      const members = (memResult.recordset || []) as { userId: number; name: string; designationName: string | null; photoUrl: string | null; departmentName: string | null; orgDepartmentId: number | null }[];
+      const members = membersByTeam.get(t.id) || [];
       for (const m of members) {
-        const userNodeId = `user-${m.userId}`;
-        const isLeader = t.leadUserId === m.userId;
         nodes.push({
-          id: userNodeId,
-          type: 'user',
-          parentId: teamNodeId,
-          data: {
-            label: m.name,
-            designationName: m.designationName,
-            departmentName: m.departmentName,
-            photoUrl: m.photoUrl,
-            isLeader,
-          },
-          userId: m.userId,
-          teamId: t.id,
-          departmentId: m.orgDepartmentId ?? d.id,
+          id: `user-${m.userId}`, type: 'user', parentId: teamNodeId,
+          data: { label: m.name, designationName: m.designationName, departmentName: m.departmentName, photoUrl: m.photoUrl, isLeader: t.leadUserId === m.userId },
+          userId: m.userId, teamId: t.id, departmentId: m.orgDepartmentId ?? d.id,
         });
-        edges.push({ source: teamNodeId, target: userNodeId });
+        edges.push({ source: teamNodeId, target: `user-${m.userId}` });
       }
     }
   }
@@ -437,15 +530,15 @@ export async function listUnassignedUsers(branchId?: number): Promise<{ userId: 
   const req = await getRequest();
   req.input('branchId', branchId ?? null);
   const result = await req.query(`
-    SELECT u.userid AS userId, u.Name AS name, odept.DepartmentName AS departmentName,
+    SELECT u.UserId AS userId, u.Name AS name, odept.DepartmentName AS departmentName,
            des.Name AS designationName, p.PhotoUrl AS photoUrl, p.OrgDepartmentId AS orgDepartmentId
     FROM ${USERS} u
-    LEFT JOIN ${PROFILE} p ON p.UserID = u.userid
+    LEFT JOIN ${PROFILE} p ON p.UserID = u.UserId
     LEFT JOIN ${ORG_DEPT} odept ON odept.Id = p.OrgDepartmentId
     LEFT JOIN ${ORG_DESIG} des ON des.Id = p.OrgDesignationId
     WHERE u.IsActive = 1
-      AND NOT EXISTS (SELECT 1 FROM ${ORG_MEMBER} m WHERE m.UserId = u.userid AND m.LeftAt IS NULL)
-      AND (@branchId IS NULL OR EXISTS (SELECT 1 FROM ${USER_BRANCH} ba WHERE ba.UserId = u.userid AND ba.BranchId = @branchId AND ba.IsActive = 1))
+      AND NOT EXISTS (SELECT 1 FROM ${ORG_MEMBER} m WHERE m.UserId = u.UserId AND m.LeftAt IS NULL)
+      AND (@branchId IS NULL OR EXISTS (SELECT 1 FROM ${USER_BRANCH} ba WHERE ba.UserId = u.UserId AND ba.BranchId = @branchId AND ba.IsActive = 1))
     ORDER BY u.Name
   `);
   const rows = (result.recordset || []) as { userId: number; name: string; departmentName: string | null; designationName: string | null; photoUrl: string | null; orgDepartmentId: number | null }[];

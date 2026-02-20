@@ -20,6 +20,8 @@ const CAP_MAP = `[${SCHEMA}].[utbl_BranchCapabilityMap]`;
 const LOCATION = `[${SCHEMA}].[utbl_BranchLocation]`;
 const ORG_DEPT = `[${SCHEMA}].[utbl_Org_Department]`;
 const ORG_DESIG = `[${SCHEMA}].[utbl_Org_Designation]`;
+const ORG_TEAM = `[${SCHEMA}].[utbl_Org_Team]`;
+const PROFILE = `[${SCHEMA}].[hrms_EmployeeProfile]`;
 
 function d2s(d: unknown): string { return d instanceof Date ? d.toISOString() : String(d ?? ''); }
 function d2sn(d: unknown): string | null { return d == null ? null : (d instanceof Date ? d.toISOString() : String(d)); }
@@ -369,10 +371,22 @@ export async function updateOrgDepartment(id: number, data: { departmentCode?: s
   return true;
 }
 
-export async function deleteOrgDepartment(id: number): Promise<boolean> {
+/** Delete a department only if it has no teams or employees. */
+export async function deleteOrgDepartment(id: number): Promise<{ success: boolean; error?: string }> {
+  const checkReq = await getRequest();
+  checkReq.input('id', id);
+  const check = await checkReq.query(`
+    SELECT
+      (SELECT COUNT(*) FROM ${ORG_TEAM} WHERE DepartmentId = @id) AS teamCount,
+      (SELECT COUNT(*) FROM ${PROFILE} WHERE OrgDepartmentId = @id) AS employeeCount
+  `);
+  const { teamCount, employeeCount } = check.recordset[0] as { teamCount: number; employeeCount: number };
+  if (teamCount > 0) return { success: false, error: `Cannot delete: ${teamCount} team(s) still belong to this department` };
+  if (employeeCount > 0) return { success: false, error: `Cannot delete: ${employeeCount} employee(s) still assigned to this department` };
+
   const req = await getRequest();
   const result = await req.input('id', id).query(`DELETE FROM ${ORG_DEPT} WHERE Id = @id`);
-  return (result.rowsAffected[0] ?? 0) > 0;
+  return { success: (result.rowsAffected[0] ?? 0) > 0 };
 }
 
 // ─── Designation CRUD (moved from HRMS) ───

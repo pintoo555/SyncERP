@@ -20,6 +20,7 @@ router.get('/org/teams/:id/members', requirePermission('HRMS.VIEW'), hrmsControl
 router.post('/org/teams/:id/members', requirePermission('HRMS.EDIT'), hrmsController.addOrgTeamMember);
 
 router.post('/org/employees/:userId/move-team', requirePermission('HRMS.EDIT'), hrmsController.moveUserToTeam);
+router.delete('/org/employees/:userId/team', requirePermission('HRMS.EDIT'), hrmsController.removeUserFromTeam);
 router.get('/org/tree', requirePermission('HRMS.VIEW'), hrmsController.getOrgTree);
 router.get('/org/unassigned-users', requirePermission('HRMS.VIEW'), hrmsController.listUnassignedUsers);
 

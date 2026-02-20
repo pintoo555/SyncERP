@@ -310,7 +310,7 @@ export async function listMessages(params: {
            m.ReceivedAt, m.SentAt
     FROM ${MESSAGE_TABLE} m
     LEFT JOIN ${CHANNEL_TABLE} c ON c.ChannelID = m.ChannelID
-    LEFT JOIN dbo.rb_users u ON u.userid = m.SentByUserID
+    LEFT JOIN dbo.utbl_Users_Master u ON u.UserId = m.SentByUserID
     WHERE 1=1
   `;
   if (params.channelId != null) listQ += ` AND m.ChannelID = @channelId`;
@@ -393,7 +393,7 @@ export async function getDashboardStats(days: number = 30): Promise<DashboardSta
     (await getRequest()).query(`
       SELECT TOP 10 m.SentByUserID AS UserId, u.name AS UserName, COUNT(*) AS Cnt
       FROM ${MESSAGE_TABLE} m
-      LEFT JOIN dbo.rb_users u ON u.userid = m.SentByUserID
+      LEFT JOIN dbo.utbl_Users_Master u ON u.UserId = m.SentByUserID
       WHERE m.Direction = 'outbound' AND m.SentAt >= DATEADD(day, -${safeDays}, GETDATE())
       GROUP BY m.SentByUserID, u.name
       ORDER BY Cnt DESC

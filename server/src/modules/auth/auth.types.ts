@@ -4,6 +4,7 @@ export interface UserRow {
   DepartmentID: number | null;
   Username: string | null;
   Email: string;
-  Password: string;
+  /** Bcrypt hash only (from utbl_Users_Master.PasswordHash). */
+  PasswordHash: string;
   IsActive: number | boolean;
 }

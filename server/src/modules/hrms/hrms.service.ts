@@ -1,5 +1,5 @@
 /**
- * HRMS: Employee profiles, family, bank. Uses rb_users, sync_Department, sync_Designation.
+ * HRMS: Employee profiles, family, bank. Uses utbl_Users_Master, sync_Department, sync_Designation.
  * Internal email (HmailServer) stored on profile; password encrypted via mailboxCrypto.
  */
 
@@ -22,7 +22,7 @@ const OTP_TABLE = `[${SCHEMA}].[hrms_WhatsAppOtp]`;
 const CONTACT_NUM = `[${SCHEMA}].[hrms_EmployeeContactNumber]`;
 const FAMILY = `[${SCHEMA}].[hrms_EmployeeFamily]`;
 const BANK = `[${SCHEMA}].[hrms_EmployeeBank]`;
-const USERS = `[${SCHEMA}].[rb_users]`;
+const USERS = `[${SCHEMA}].[utbl_Users_Master]`;
 const DEPT = `[${SCHEMA}].[sync_Department]`;
 const DESIG = `[${SCHEMA}].[sync_Designation]`;
 const ORG_DESIG = `[${SCHEMA}].[utbl_Org_Designation]`;
@@ -59,25 +59,25 @@ export async function listEmployees(search?: string, departmentId?: number, isAc
   req.input('hasDesignation', hasDesignation);
   req.input('hasBranch', hasBranch);
   const result = await req.query(`
-    SELECT u.userid AS userId, u.Name AS name, u.Email AS email, u.DepartmentID AS departmentId,
+    SELECT u.UserId AS userId, u.Name AS name, u.Email AS email, u.DepartmentID AS departmentId,
            d.DepartmentName AS departmentName, p.DesignationID AS designationId,
            COALESCE(orgDesig.Name, des.DesignationType) AS designationType,
            p.OrgDesignationId AS orgDesignationId,
-           ISNULL(NULLIF(RTRIM(p.EmployeeCode), ''), 'SYNC' + RIGHT('00' + CAST(u.userid AS VARCHAR(10)), 2)) AS employeeCode,
+           ISNULL(NULLIF(RTRIM(p.EmployeeCode), ''), 'SYNC' + RIGHT('00' + CAST(u.UserId AS VARCHAR(10)), 2)) AS employeeCode,
            p.Mobile AS mobile, p.JoinDate AS joinDate, u.IsActive AS isActive,
            uba_def.BranchId AS branchId, b.BranchName AS branchName
     FROM ${USERS} u
     LEFT JOIN ${DEPT} d ON d.DepartmentID = u.DepartmentID
-    LEFT JOIN ${PROFILE} p ON p.UserID = u.userid
+    LEFT JOIN ${PROFILE} p ON p.UserID = u.UserId
     LEFT JOIN ${DESIG} des ON des.DesignationID = p.DesignationID
     LEFT JOIN ${ORG_DESIG} orgDesig ON orgDesig.Id = p.OrgDesignationId
-    LEFT JOIN ${USER_BRANCH} uba_def ON uba_def.UserId = u.userid AND uba_def.IsDefault = 1 AND uba_def.IsActive = 1
+    LEFT JOIN ${USER_BRANCH} uba_def ON uba_def.UserId = u.UserId AND uba_def.IsDefault = 1 AND uba_def.IsActive = 1
     LEFT JOIN ${BRANCH} b ON b.Id = uba_def.BranchId
-    WHERE (0 = @hasSearch OR u.Name LIKE @search OR u.Email LIKE @search OR p.EmployeeCode LIKE @search OR 'SYNC' + RIGHT('00' + CAST(u.userid AS VARCHAR(10)), 2) LIKE @search OR p.Mobile LIKE @search OR p.Phone LIKE @search OR d.DepartmentName LIKE @search)
+    WHERE (0 = @hasSearch OR u.Name LIKE @search OR u.Email LIKE @search OR p.EmployeeCode LIKE @search OR 'SYNC' + RIGHT('00' + CAST(u.UserId AS VARCHAR(10)), 2) LIKE @search OR p.Mobile LIKE @search OR p.Phone LIKE @search OR d.DepartmentName LIKE @search)
       AND (0 = @hasDept OR u.DepartmentID = @departmentId)
       AND (0 = @hasActiveFilter OR u.IsActive = @isActive)
       AND (0 = @hasDesignation OR p.OrgDesignationId = @orgDesignationId)
-      AND (0 = @hasBranch OR EXISTS (SELECT 1 FROM ${USER_BRANCH} ba WHERE ba.UserId = u.userid AND ba.BranchId = @branchId AND ba.IsActive = 1))
+      AND (0 = @hasBranch OR EXISTS (SELECT 1 FROM ${USER_BRANCH} ba WHERE ba.UserId = u.UserId AND ba.BranchId = @branchId AND ba.IsActive = 1))
     ORDER BY u.Name
   `);
   const rows = (result.recordset || []) as (EmployeeListItem & { joinDate: Date | null })[];
@@ -386,15 +386,16 @@ export async function updateUserDepartmentAndName(
   const result = await req.query(`
     UPDATE ${USERS} SET DepartmentID = @departmentId, Name = @name,
       Email = CASE WHEN @emailProvided = 1 THEN @email ELSE Email END,
-      Username = CASE WHEN @usernameProvided = 1 THEN @username ELSE Username END
-    WHERE userid = @userId
+      Username = CASE WHEN @usernameProvided = 1 THEN @username ELSE Username END,
+      UpdatedAt = GETDATE()
+    WHERE UserId = @userId
   `);
   return (result.rowsAffected[0] ?? 0) > 0;
 }
 
 export async function getUserNameAndEmail(userId: number): Promise<{ name: string; email: string } | null> {
   const req = await getRequest();
-  const result = await req.input('userId', userId).query(`SELECT Name AS name, Email AS email FROM ${USERS} WHERE userid = @userId`);
+  const result = await req.input('userId', userId).query(`SELECT Name AS name, Email AS email FROM ${USERS} WHERE UserId = @userId`);
   const row = result.recordset[0] as { name: string; email: string } | undefined;
   return row ?? null;
 }

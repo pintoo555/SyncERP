@@ -9,7 +9,7 @@ import type { CalendarCategory, CalendarScope, CalendarEventRow, CalendarEventPa
 
 const SCHEMA = config.db.schema || 'dbo';
 const TABLE = `[${SCHEMA}].[react_CalendarEvents]`;
-const USERS_TABLE = config.db.schema ? `[${config.db.schema}].[rb_users]` : '[dbo].[rb_users]';
+const USERS_TABLE = config.db.schema ? `[${config.db.schema}].[utbl_Users_Master]` : '[dbo].[utbl_Users_Master]';
 
 export type { CalendarCategory, CalendarScope, CalendarEventPayload, CalendarView, CalendarUserRow };
 
@@ -189,7 +189,7 @@ export async function deleteEvent(id: number): Promise<boolean> {
 export async function listCalendarUsers(): Promise<CalendarUserRow[]> {
   const req = await getRequest();
   const result = await req.query(`
-    SELECT userid AS userId, Name AS name, Email AS email
+    SELECT UserId AS userId, Name AS name, Email AS email
     FROM ${USERS_TABLE}
     WHERE IsActive = 1
     ORDER BY Name

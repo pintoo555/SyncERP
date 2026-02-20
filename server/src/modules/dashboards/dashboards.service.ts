@@ -54,7 +54,7 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
         (SELECT COUNT(*) FROM react_Asset WHERE IsDeleted = 0 AND Status = 'SCRAPPED') AS scrappedAssets,
         (SELECT ISNULL(SUM(PurchasePrice), 0) FROM react_Asset WHERE IsDeleted = 0) AS totalPurchaseValue,
         (SELECT COUNT(*) FROM react_AssetMaintenanceTicket WHERE IsDeleted = 0 AND ResolvedAt IS NULL) AS openTickets,
-        (SELECT COUNT(*) FROM rb_users WHERE IsActive = 1) AS totalUsers
+        (SELECT COUNT(*) FROM utbl_Users_Master WHERE IsActive = 1) AS totalUsers
     `),
     (async () => {
       const r = await getRequest();
@@ -96,7 +96,7 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
         SELECT ISNULL(u.Name, 'Unassigned') AS userName,
                ISNULL(SUM(a.PurchasePrice), 0) AS totalValue, COUNT(*) AS count
         FROM react_Asset a
-        LEFT JOIN rb_users u ON u.userid = a.CurrentAssignedToUserID
+        LEFT JOIN utbl_Users_Master u ON u.UserId = a.CurrentAssignedToUserID
         WHERE a.IsDeleted = 0 AND a.CurrentAssignedToUserID IS NOT NULL
         GROUP BY u.Name
         ORDER BY SUM(a.PurchasePrice) DESC
@@ -173,9 +173,9 @@ export async function getDepartmentDashboard(departmentId: number): Promise<Depa
   const req2 = await getRequest();
   const kpiResult = await req2.input('departmentId', departmentId).query(`
     SELECT
-      (SELECT COUNT(*) FROM react_Asset a INNER JOIN rb_users u ON u.userid = a.CurrentAssignedToUserID WHERE a.IsDeleted = 0 AND u.DepartmentID = @departmentId) AS assignedToDept,
-      (SELECT ISNULL(SUM(a.PurchasePrice), 0) FROM react_Asset a INNER JOIN rb_users u ON u.userid = a.CurrentAssignedToUserID WHERE a.IsDeleted = 0 AND u.DepartmentID = @departmentId) AS totalValue,
-      (SELECT COUNT(*) FROM react_AssetMaintenanceTicket t INNER JOIN react_Asset a ON a.AssetID = t.AssetID INNER JOIN rb_users u ON u.userid = a.CurrentAssignedToUserID WHERE t.IsDeleted = 0 AND t.ResolvedAt IS NULL AND u.DepartmentID = @departmentId) AS openTickets
+      (SELECT COUNT(*) FROM react_Asset a INNER JOIN utbl_Users_Master u ON u.UserId = a.CurrentAssignedToUserID WHERE a.IsDeleted = 0 AND u.DepartmentID = @departmentId) AS assignedToDept,
+      (SELECT ISNULL(SUM(a.PurchasePrice), 0) FROM react_Asset a INNER JOIN utbl_Users_Master u ON u.UserId = a.CurrentAssignedToUserID WHERE a.IsDeleted = 0 AND u.DepartmentID = @departmentId) AS totalValue,
+      (SELECT COUNT(*) FROM react_AssetMaintenanceTicket t INNER JOIN react_Asset a ON a.AssetID = t.AssetID INNER JOIN utbl_Users_Master u ON u.UserId = a.CurrentAssignedToUserID WHERE t.IsDeleted = 0 AND t.ResolvedAt IS NULL AND u.DepartmentID = @departmentId) AS openTickets
   `);
   const k = kpiResult.recordset[0] as Record<string, number>;
   const totalAssets = Number(k?.assignedToDept ?? 0);
@@ -184,7 +184,7 @@ export async function getDepartmentDashboard(departmentId: number): Promise<Depa
   const statusResult = await statusReq.input('departmentId', departmentId).query(`
     SELECT a.Status AS status, COUNT(*) AS count
     FROM react_Asset a
-    INNER JOIN rb_users u ON u.userid = a.CurrentAssignedToUserID
+    INNER JOIN utbl_Users_Master u ON u.UserId = a.CurrentAssignedToUserID
     WHERE a.IsDeleted = 0 AND u.DepartmentID = @departmentId
     GROUP BY a.Status ORDER BY count DESC
   `);

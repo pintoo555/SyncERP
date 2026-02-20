@@ -8,7 +8,7 @@ import type { ContactRemarkRow, ContactRemarkCreateData } from './clients.types'
 
 const SCHEMA = config.db.schema || 'dbo';
 const REMARK = `[${SCHEMA}].[utbl_ContactRemark]`;
-const USERS = `[${SCHEMA}].[rb_users]`;
+const USERS = `[${SCHEMA}].[utbl_Users_Master]`;
 
 function dateToIso(d: unknown): string {
   return d instanceof Date ? d.toISOString() : String(d ?? '');
@@ -36,7 +36,7 @@ export async function listRemarks(contactId: number): Promise<ContactRemarkRow[]
            r.CreatedBy AS createdBy, u.Name AS createdByName,
            r.CreatedOn AS createdOn, r.UpdatedBy AS updatedBy, r.UpdatedOn AS updatedOn
     FROM ${REMARK} r
-    LEFT JOIN ${USERS} u ON u.userid = r.CreatedBy
+    LEFT JOIN ${USERS} u ON u.UserId = r.CreatedBy
     WHERE r.ContactId = @contactId AND r.IsActive = 1
     ORDER BY r.CreatedOn DESC
   `);

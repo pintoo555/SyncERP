@@ -1,5 +1,5 @@
 /**
- * Users repository – database queries for rb_users.
+ * Users repository – database queries for utbl_Users_Master.
  */
 
 import { getRequest } from '../../config/db';
@@ -10,8 +10,8 @@ export async function findUsersForList(search: string | null): Promise<UserListI
   const result = await req
     .input('search', search)
     .query(`
-      SELECT userid AS userId, Name AS name, Email AS email, DepartmentID AS departmentId
-      FROM rb_users
+      SELECT UserId AS userId, Name AS name, Email AS email, DepartmentID AS departmentId
+      FROM utbl_Users_Master
       WHERE IsActive = 1
         AND (@search IS NULL OR Name LIKE @search OR Email LIKE @search)
       ORDER BY Name

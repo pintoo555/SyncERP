@@ -56,7 +56,7 @@ export async function listTickets(query: TicketListQueryInput): Promise<{ data: 
       FROM react_AssetMaintenanceTicket t
       INNER JOIN react_Asset a ON a.AssetID = t.AssetID
       LEFT JOIN react_Vendors v ON v.VendorID = t.VendorID
-      LEFT JOIN rb_users u ON u.userid = t.ReportedByUserID
+      LEFT JOIN utbl_Users_Master u ON u.UserId = t.ReportedByUserID
       WHERE t.IsDeleted = 0
         AND (0 = @hasAsset OR t.AssetID = @assetId)
         AND (0 = @hasStatus OR t.Status = @status)
@@ -98,7 +98,7 @@ export async function getTicketById(ticketId: number): Promise<TicketRecord | nu
     FROM react_AssetMaintenanceTicket t
     INNER JOIN react_Asset a ON a.AssetID = t.AssetID
     LEFT JOIN react_Vendors v ON v.VendorID = t.VendorID
-    LEFT JOIN rb_users u ON u.userid = t.ReportedByUserID
+    LEFT JOIN utbl_Users_Master u ON u.UserId = t.ReportedByUserID
     WHERE t.TicketID = @ticketId
   `);
   const row = result.recordset[0] as TicketRecord | undefined;

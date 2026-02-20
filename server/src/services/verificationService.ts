@@ -36,7 +36,7 @@ export async function listVerifications(query: VerificationListQueryInput): Prom
              ROW_NUMBER() OVER (ORDER BY av.VerifiedAt DESC) AS rn
       FROM react_AssetVerification av
       INNER JOIN react_Asset a ON a.AssetID = av.AssetID
-      INNER JOIN rb_users u ON u.userid = av.VerifiedByUserID
+      INNER JOIN utbl_Users_Master u ON u.UserId = av.VerifiedByUserID
       LEFT JOIN react_Location l ON l.LocationID = av.LocationID
       WHERE (0 = @hasAsset OR av.AssetID = @assetId)
     )
@@ -67,7 +67,7 @@ export async function getVerificationById(verificationId: number): Promise<Verif
            l.LocationName AS locationName, av.Notes AS notes, av.VerifiedStatus AS verifiedStatus
     FROM react_AssetVerification av
     INNER JOIN react_Asset a ON a.AssetID = av.AssetID
-    INNER JOIN rb_users u ON u.userid = av.VerifiedByUserID
+    INNER JOIN utbl_Users_Master u ON u.UserId = av.VerifiedByUserID
     LEFT JOIN react_Location l ON l.LocationID = av.LocationID
     WHERE av.VerificationID = @verificationId
   `);

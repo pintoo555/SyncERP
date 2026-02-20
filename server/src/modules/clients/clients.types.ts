@@ -149,6 +149,9 @@ export interface ContactRow {
   alternateNumber: string | null;
   email: string | null;
   whatsAppNumber: string | null;
+  /** True if this WhatsApp number was verified via ultramsg.com; cleared when number changes. */
+  whatsAppVerified: boolean;
+  whatsAppVerifiedAt: string | null;
   contactRoles: string | null;
   isPrimary: boolean;
   isActive: boolean;

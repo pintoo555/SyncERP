@@ -98,7 +98,7 @@ export async function getConversations(myUserId: number): Promise<ConversationRo
   const table = await getChatTableName();
   const req = await getRequest();
   const result = await req.input('userId', myUserId).query(`
-    SELECT u.userid AS userId, u.Name AS name, u.Email AS email,
+    SELECT u.UserId AS userId, u.Name AS name, u.Email AS email,
            CONVERT(NVARCHAR(19), m.SentAt, 120) AS lastMessageAt,
            LEFT(m.MessageText, 60) AS lastMessagePreview,
            (SELECT COUNT(*) FROM ${table} uq WHERE uq.ReceiverUserID = @userId AND uq.SenderUserID = p.partnerId AND uq.ReadAt IS NULL) AS unreadCount
@@ -108,7 +108,7 @@ export async function getConversations(myUserId: number): Promise<ConversationRo
       WHERE SenderUserID = @userId OR ReceiverUserID = @userId
       GROUP BY CASE WHEN SenderUserID = @userId THEN ReceiverUserID ELSE SenderUserID END
     ) p
-    INNER JOIN rb_users u ON u.userid = p.partnerId AND u.IsActive = 1
+    INNER JOIN utbl_Users_Master u ON u.UserId = p.partnerId AND u.IsActive = 1
     OUTER APPLY (
       SELECT TOP 1 SentAt, MessageText
       FROM ${table} m2
@@ -348,12 +348,12 @@ export async function getMessages(
              CASE WHEN st.MessageID IS NOT NULL THEN 1 ELSE 0 END AS isStarred,
              CASE WHEN pin.MessageID IS NOT NULL THEN 1 ELSE 0 END AS isPinned
       FROM ${table} m
-      INNER JOIN rb_users u1 ON u1.userid = m.SenderUserID
-      INNER JOIN rb_users u2 ON u2.userid = m.ReceiverUserID
+      INNER JOIN utbl_Users_Master u1 ON u1.UserId = m.SenderUserID
+      INNER JOIN utbl_Users_Master u2 ON u2.UserId = m.ReceiverUserID
       LEFT JOIN dbo.react_FileStore f ON f.FileID = m.AttachmentFileID
       LEFT JOIN dbo.react_ChatMessageHidden h ON h.MessageID = m.MessageID AND h.UserID = @userId1
       LEFT JOIN ${table} rt ON rt.MessageID = m.ReplyToMessageID
-      LEFT JOIN rb_users u_rt ON u_rt.userid = rt.SenderUserID
+      LEFT JOIN utbl_Users_Master u_rt ON u_rt.UserId = rt.SenderUserID
       LEFT JOIN dbo.react_ChatStarred st ON st.MessageID = m.MessageID AND st.UserID = @userId1
       LEFT JOIN dbo.react_ChatPinned pin ON pin.MessageID = m.MessageID AND pin.UserID = @userId1 AND pin.PartnerID = @userId2
       WHERE ((m.SenderUserID = @userId1 AND m.ReceiverUserID = @userId2) OR (m.SenderUserID = @userId2 AND m.ReceiverUserID = @userId1))
@@ -376,8 +376,8 @@ export async function getMessages(
                  u1.Name AS senderName, u2.Name AS receiverName,
                  m.AttachmentFileID AS attachmentFileId, f.OriginalFileName AS attachmentFileName, f.MimeType AS attachmentMimeType, f.AccessToken AS attachmentAccessToken
           FROM ${table} m
-          INNER JOIN rb_users u1 ON u1.userid = m.SenderUserID
-          INNER JOIN rb_users u2 ON u2.userid = m.ReceiverUserID
+          INNER JOIN utbl_Users_Master u1 ON u1.UserId = m.SenderUserID
+          INNER JOIN utbl_Users_Master u2 ON u2.UserId = m.ReceiverUserID
           LEFT JOIN dbo.react_FileStore f ON f.FileID = m.AttachmentFileID
           WHERE ((m.SenderUserID = @userId1 AND m.ReceiverUserID = @userId2) OR (m.SenderUserID = @userId2 AND m.ReceiverUserID = @userId1)) ${beforeClause}
           ORDER BY m.SentAt DESC
@@ -394,8 +394,8 @@ export async function getMessages(
                  m.MessageText AS messageText, CONVERT(NVARCHAR(19), m.SentAt, 120) AS sentAt,
                  u1.Name AS senderName, u2.Name AS receiverName
           FROM ${table} m
-          INNER JOIN rb_users u1 ON u1.userid = m.SenderUserID
-          INNER JOIN rb_users u2 ON u2.userid = m.ReceiverUserID
+          INNER JOIN utbl_Users_Master u1 ON u1.UserId = m.SenderUserID
+          INNER JOIN utbl_Users_Master u2 ON u2.UserId = m.ReceiverUserID
           WHERE ((m.SenderUserID = @userId1 AND m.ReceiverUserID = @userId2) OR (m.SenderUserID = @userId2 AND m.ReceiverUserID = @userId1)) ${beforeClause}
           ORDER BY m.SentAt DESC
         `);
@@ -511,8 +511,8 @@ export async function sendMessage(
       .input('senderUserId', senderUserId)
       .input('receiverUserId', receiverUserId)
       .query(`
-      SELECT (SELECT Name FROM rb_users WHERE userid = @senderUserId) AS senderName,
-             (SELECT Name FROM rb_users WHERE userid = @receiverUserId) AS receiverName
+      SELECT (SELECT Name FROM utbl_Users_Master WHERE UserId = @senderUserId) AS senderName,
+             (SELECT Name FROM utbl_Users_Master WHERE UserId = @receiverUserId) AS receiverName
       `);
     const n = names.recordset?.[0] as { senderName?: string; receiverName?: string } | undefined;
     senderName = n?.senderName ?? '';
@@ -543,7 +543,7 @@ export async function sendMessage(
       const rtRes = await rtReq.input('replyToMessageId', replyToMessageId).query(`
         SELECT LEFT(m.MessageText, 120) AS replyToPreview, u.Name AS replyToSenderName
         FROM ${table} m
-        INNER JOIN rb_users u ON u.userid = m.SenderUserID
+        INNER JOIN utbl_Users_Master u ON u.UserId = m.SenderUserID
         WHERE m.MessageID = @replyToMessageId
       `);
       const rtRow = rtRes.recordset?.[0] as { replyToPreview?: string; replyToSenderName?: string } | undefined;
@@ -588,8 +588,8 @@ export async function getMessageById(messageId: number, myUserId: number): Promi
              u1.Name AS senderName, u2.Name AS receiverName,
              m.AttachmentFileID AS attachmentFileId, f.OriginalFileName AS attachmentFileName, f.MimeType AS attachmentMimeType, f.AccessToken AS attachmentAccessToken
       FROM ${table} m
-      INNER JOIN rb_users u1 ON u1.userid = m.SenderUserID
-      INNER JOIN rb_users u2 ON u2.userid = m.ReceiverUserID
+      INNER JOIN utbl_Users_Master u1 ON u1.UserId = m.SenderUserID
+      INNER JOIN utbl_Users_Master u2 ON u2.UserId = m.ReceiverUserID
       LEFT JOIN dbo.react_FileStore f ON f.FileID = m.AttachmentFileID
       WHERE m.MessageID = @messageId AND (m.SenderUserID = @userId OR m.ReceiverUserID = @userId) AND m.DeletedAt IS NULL
     `);

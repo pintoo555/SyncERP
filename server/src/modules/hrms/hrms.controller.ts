@@ -16,7 +16,7 @@ import { getPermissionsForUser } from '../rbac';
 import { emitOrgChanged } from '../../realtime/setup';
 
 const SCHEMA = config.db.schema || 'dbo';
-const USERS = `[${SCHEMA}].[rb_users]`;
+const USERS = `[${SCHEMA}].[utbl_Users_Master]`;
 const PROFILE = `[${SCHEMA}].[hrms_EmployeeProfile]`;
 const DEPT = `[${SCHEMA}].[sync_Department]`;
 
@@ -75,11 +75,25 @@ export async function getEmployee(req: AuthRequest, res: Response, next: NextFun
     }
     const reqDb = await getRequest();
     const userResult = await reqDb.input('userId', userId).query(`
-      SELECT u.userid AS userId, u.Name AS name, u.Username AS username, u.Email AS email, u.DepartmentID AS departmentId
-      FROM ${USERS} u WHERE u.userid = @userId
+      SELECT u.UserId AS userId, u.Name AS name, u.Username AS username, u.Email AS email, u.DepartmentID AS departmentId
+      FROM ${USERS} u WHERE u.UserId = @userId
     `);
-    const userRow = userResult.recordset[0] as { userId: number; name: string; username: string | null; email: string; departmentId: number | null } | undefined;
-    if (!userRow) return next(new AppError(404, 'User not found'));
+    const raw = (userResult.recordset as Record<string, unknown>[])?.[0];
+    if (!raw) return next(new AppError(404, 'User not found'));
+    const getVal = (obj: Record<string, unknown>, ...keys: string[]) => {
+      for (const k of keys) {
+        const v = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1)];
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    };
+    const userRow = {
+      userId: Number(getVal(raw, 'userId', 'UserId')) || userId,
+      name: String(getVal(raw, 'name', 'Name') ?? ''),
+      username: getVal(raw, 'username', 'Username') as string | null,
+      email: String(getVal(raw, 'email', 'Email') ?? ''),
+      departmentId: getVal(raw, 'departmentId', 'DepartmentID') != null ? Number(getVal(raw, 'departmentId', 'DepartmentID')) : null,
+    };
     const [profile, family, bank, contactNumbersRaw, branches] = await Promise.all([
       hrmsService.getEmployeeProfile(userId),
       hrmsService.listFamily(userId),
@@ -467,18 +481,18 @@ export async function listUsersForSearch(req: AuthRequest, res: Response, next: 
     reqDb.input('branchId', branchId ?? null);
     const USER_BRANCH_TBL = `[${SCHEMA}].[utbl_UserBranchAccess]`;
     const result = await reqDb.query(`
-        SELECT u.userid AS userId, u.Name AS name, u.Email AS email, u.DepartmentID AS departmentId,
+        SELECT u.UserId AS userId, u.Name AS name, u.Email AS email, u.DepartmentID AS departmentId,
                d.DepartmentName AS departmentName,
                p.WhatsAppNumber AS whatsAppNumber, p.WhatsAppVerifiedAt AS whatsAppVerifiedAt,
                p.EmployeeCode AS employeeCode, p.Mobile AS mobile, p.Phone AS phone
         FROM ${USERS} u
-        LEFT JOIN ${PROFILE} p ON p.UserID = u.userid
+        LEFT JOIN ${PROFILE} p ON p.UserID = u.UserId
         LEFT JOIN ${DEPT} d ON d.DepartmentID = u.DepartmentID
         WHERE (@search IS NULL
           OR u.Name LIKE @search OR u.Email LIKE @search
           OR p.EmployeeCode LIKE @search OR p.Mobile LIKE @search OR p.Phone LIKE @search
           OR d.DepartmentName LIKE @search)
-          AND (@branchId IS NULL OR EXISTS (SELECT 1 FROM ${USER_BRANCH_TBL} ba WHERE ba.UserId = u.userid AND ba.BranchId = @branchId AND ba.IsActive = 1))
+          AND (@branchId IS NULL OR EXISTS (SELECT 1 FROM ${USER_BRANCH_TBL} ba WHERE ba.UserId = u.UserId AND ba.BranchId = @branchId AND ba.IsActive = 1))
         ORDER BY u.Name
       `);
     const data = (result.recordset || []) as {
@@ -640,6 +654,22 @@ export async function moveUserToTeam(req: AuthRequest, res: Response, next: Next
     if (!result.success) return next(new AppError(400, result.error ?? 'Move failed'));
     logAuditFromRequest(req, { eventType: 'update', entityType: 'utbl_Org_TeamMember', entityId: String(userId), details: `moved to team ${toTeamId}` });
     emitOrgChanged({ action: 'move', entityType: 'member', entityId: userId });
+    res.json({ success: true });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function removeUserFromTeam(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const perms = await getPermissionsForUser(req.user!.userId!);
+    if (!perms.includes('HRMS.EDIT')) return next(new AppError(403, 'Insufficient permissions'));
+    const userId = Number((req.params as { userId: string }).userId);
+    if (!Number.isInteger(userId)) return next(new AppError(400, 'Invalid userId'));
+    const removed = await hrmsOrgService.removeUserFromTeam(userId);
+    if (!removed) return next(new AppError(404, 'User has no active team membership'));
+    logAuditFromRequest(req, { eventType: 'delete', entityType: 'utbl_Org_TeamMember', entityId: String(userId), details: 'removed from team' });
+    emitOrgChanged({ action: 'remove', entityType: 'member', entityId: userId });
     res.json({ success: true });
   } catch (e) {
     next(e);

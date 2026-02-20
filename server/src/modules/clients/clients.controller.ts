@@ -1,5 +1,5 @@
 /**
- * Client module controller: HTTP request handlers for all client endpoints.
+ * Client module controller – handles all client endpoints including dashboard analytics.
  */
 
 import { Response, NextFunction } from 'express';
@@ -17,6 +17,9 @@ import * as client360Service from './client360.service';
 import * as industryService from './industry.service';
 import * as gstVerifyService from './gstVerify.service';
 import * as remarkService from './contactRemark.service';
+import * as dashboardService from './clientDashboard.service';
+import * as apiConfigService from '../../services/apiConfigService';
+import * as aiUsageService from '../../services/aiUsageService';
 
 function userId(req: AuthRequest): number {
   return req.user?.userId ?? 0;
@@ -332,6 +335,20 @@ export async function suggestReplacement(req: AuthRequest, res: Response, next: 
   } catch (e) { next(e); }
 }
 
+export async function verifyWhatsAppContact(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const contactId = Number(req.params.contactId);
+    if (!Number.isInteger(contactId)) return next(new AppError(400, 'Invalid contact id'));
+    const whatsAppNumber = typeof req.body?.whatsAppNumber === 'string' ? req.body.whatsAppNumber.trim() : undefined;
+    const result = await contactService.verifyWhatsApp(contactId, whatsAppNumber);
+    if (!result.verified) {
+      return next(new AppError(400, result.error || 'WhatsApp verification failed'));
+    }
+    const contact = await contactService.getContact(contactId);
+    res.json({ success: true, data: contact });
+  } catch (e) { next(e); }
+}
+
 /* ═══════════════════════ Groups ═══════════════════════ */
 
 export async function listGroups(req: AuthRequest, res: Response, next: NextFunction) {
@@ -464,9 +481,55 @@ export async function verifyGst(req: AuthRequest, res: Response, next: NextFunct
     if (!gstin || typeof gstin !== 'string') return next(new AppError(400, 'GSTIN is required'));
     const result = await gstVerifyService.verifyGstin(gstin);
     logAuditFromRequest(req, { eventType: 'gst_verify', entityType: 'utbl_Client', entityId: gstin, details: result.valid ? 'valid' : 'invalid' });
+    const uid = req.user?.userId;
+    if (uid != null) {
+      const gstConfig = await apiConfigService.getByServiceCode('GSTZEN');
+      if (gstConfig) {
+        aiUsageService.logUsage({
+          userId: uid,
+          configId: gstConfig.configId,
+          serviceCode: gstConfig.serviceCode,
+          displayName: gstConfig.displayName,
+          model: null,
+          feature: 'GST_VERIFY',
+        }).catch(() => {});
+      }
+    }
     res.json({ success: true, data: result });
   } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'GST verification failed';
     next(new AppError(400, msg));
+  }
+}
+
+/* ═══════════════════════ Dashboard ═══════════════════════ */
+
+export async function getDashboard(_req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const stats = await dashboardService.getDashboardStats();
+    res.json({ success: true, data: stats });
+  } catch (e) { next(e); }
+}
+
+/** GET /api/clients/india-geojson – India states GeoJSON for dashboard map (avoids CORS). */
+export async function getIndiaGeoJson(_req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const url = 'https://raw.githubusercontent.com/geohacker/india/master/state/india_state.geojson';
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('Failed to fetch India GeoJSON');
+    const geo = (await resp.json()) as { type: string; features?: { type: string; properties?: Record<string, string>; geometry?: unknown }[] };
+    if (geo.features) {
+      geo.features = geo.features.map((f) => {
+        const props = f.properties ?? {};
+        if (!props.name && props.ST_NM) {
+          return { ...f, properties: { ...props, name: props.ST_NM } };
+        }
+        return f;
+      });
+    }
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.json(geo);
+  } catch (e) {
+    next(e);
   }
 }

@@ -13,10 +13,10 @@ import { emitChatMessage, emitMessagesDelivered, emitMessagesRead, emitChatReact
 import { improveMessage } from './chat.improve';
 import fs from 'fs';
 
-/** GET /api/chat/ai-models – list active AI configs for chat improve dropdown. */
+/** GET /api/chat/ai-models – list active AI-only configs for chat improve (excludes GSTZEN etc.). */
 export async function getAIModels(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const data = await apiConfigService.listActiveForDropdown();
+    const data = await apiConfigService.listActiveAiForDropdown();
     res.json({ success: true, data });
   } catch (e) {
     next(e);
@@ -32,9 +32,9 @@ export async function getChatUsers(req: AuthRequest, res: Response, next: NextFu
     const result = await reqDb
       .input('myUserId', myUserId)
       .query(`
-        SELECT userid AS userId, Name AS name, Email AS email
-        FROM rb_users
-        WHERE IsActive = 1 AND userid != @myUserId
+        SELECT UserId AS userId, Name AS name, Email AS email
+        FROM utbl_Users_Master
+        WHERE IsActive = 1 AND UserId != @myUserId
         ORDER BY Name
       `);
     const data = (result.recordset || []) as { userId: number; name: string; email: string }[];
@@ -272,7 +272,7 @@ export async function reactToMessage(req: AuthRequest, res: Response, next: Next
       const reactions = await chatService.getReactionsForMessage(messageId, otherUserId);
       let reactorName = 'Someone';
       try {
-        const nameRes = await getRequest().then((r) => r.input('userId', userId).query(`SELECT Name FROM rb_users WHERE userid = @userId`));
+        const nameRes = await getRequest().then((r) => r.input('userId', userId).query(`SELECT Name FROM utbl_Users_Master WHERE UserId = @userId`));
         const nameRow = nameRes.recordset?.[0] as { Name?: string } | undefined;
         if (nameRow?.Name) reactorName = nameRow.Name;
       } catch {
@@ -308,7 +308,7 @@ export async function removeReaction(req: AuthRequest, res: Response, next: Next
       const reactions = await chatService.getReactionsForMessage(messageId, otherUserId);
       let reactorName = 'Someone';
       try {
-        const nameRes = await getRequest().then((r) => r.input('userId', userId).query(`SELECT Name FROM rb_users WHERE userid = @userId`));
+        const nameRes = await getRequest().then((r) => r.input('userId', userId).query(`SELECT Name FROM utbl_Users_Master WHERE UserId = @userId`));
         const nameRow = nameRes.recordset?.[0] as { Name?: string } | undefined;
         if (nameRow?.Name) reactorName = nameRow.Name;
       } catch {

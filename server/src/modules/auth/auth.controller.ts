@@ -68,17 +68,31 @@ export function logout(req: AuthRequest, res: Response): void {
   res.json({ success: true });
 }
 
+function getVal(obj: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const k of keys) {
+    const v = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1)];
+    if (v !== undefined && v !== null) return v;
+  }
+  return undefined;
+}
+
 export async function currentUser(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   if (!req.user) return next(new AppError(401, 'Not authenticated'));
   try {
     const reqDb = await getRequest();
     const userResult = await reqDb.input('userId', req.user.userId).query(`
-      SELECT u.userid, u.Name, u.DepartmentID, u.Username, u.Email, d.DepartmentName
-      FROM rb_users u LEFT JOIN sync_Department d ON d.DepartmentID = u.DepartmentID
-      WHERE u.userid = @userId
+      SELECT u.UserId AS userid, u.Name, u.DepartmentID, u.Username, u.Email, d.DepartmentName
+      FROM utbl_Users_Master u LEFT JOIN sync_Department d ON d.DepartmentID = u.DepartmentID
+      WHERE u.UserId = @userId
     `);
-    const row = userResult.recordset[0] as { userid: number; Name: string; DepartmentID: number | null; Username: string | null; Email: string; DepartmentName: string | null } | undefined;
-    if (!row) return next(new AppError(404, 'User not found'));
+    const raw = (userResult.recordset as Record<string, unknown>[])?.[0];
+    if (!raw) return next(new AppError(404, 'User not found'));
+    const userId = Number(getVal(raw, 'userid', 'UserId')) || req.user.userId;
+    const name = String(getVal(raw, 'Name', 'name') ?? '');
+    const departmentId = getVal(raw, 'DepartmentID', 'departmentId') != null ? Number(getVal(raw, 'DepartmentID', 'departmentId')) : null;
+    const username = getVal(raw, 'Username', 'username') as string | null;
+    const email = String(getVal(raw, 'Email', 'email') ?? '');
+    const departmentName = getVal(raw, 'DepartmentName', 'departmentName') as string | null;
     let permissions: string[] = [];
     try {
       permissions = await getPermissionsForUser(req.user.userId);
@@ -99,7 +113,7 @@ export async function currentUser(req: AuthRequest, res: Response, next: NextFun
     }
     res.json({
       success: true,
-      user: { userId: row.userid, name: row.Name, username: row.Username ?? row.Email, email: row.Email, departmentId: row.DepartmentID, departmentName: row.DepartmentName, roles, permissions },
+      user: { userId, name, username: username ?? email, email, departmentId, departmentName: departmentName ?? null, roles, permissions },
     });
   } catch (e) {
     if (e instanceof AppError) return next(e);
@@ -153,7 +167,7 @@ export async function listAllSessionsForAdmin(req: AuthRequest, res: Response, n
       const reqDb = await getRequest();
       for (let i = 0; i < userIds.length; i++) reqDb.input(`id${i}`, userIds[i]);
       const inClause = userIds.map((_, i) => `@id${i}`).join(',');
-      const result = await reqDb.query(`SELECT userid AS userId, Name AS name, Email AS email FROM rb_users WHERE userid IN (${inClause})`);
+      const result = await reqDb.query(`SELECT UserId AS userId, Name AS name, Email AS email FROM utbl_Users_Master WHERE UserId IN (${inClause})`);
       ((result.recordset || []) as { userId: number; name: string; email: string }[]).forEach((row) => userMap.set(row.userId, { name: row.name, email: row.email }));
     }
     const sessionsWithUser = sessions.map((s) => {

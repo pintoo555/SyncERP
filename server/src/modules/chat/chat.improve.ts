@@ -5,6 +5,7 @@
 
 import * as apiConfigService from '../../services/apiConfigService';
 import * as aiUsageService from '../../services/aiUsageService';
+import * as appSettingsService from '../../services/appSettingsService';
 import type { ApiConfigRow } from '../../services/apiConfigService';
 
 const OPENAI_SERVICE_CODES = ['openai', 'OpenAI', 'OPENAI'];
@@ -30,11 +31,16 @@ export interface ImproveResult {
   model?: string;
 }
 
-/** Get config by service code or try common OpenAI codes. */
+const CHAT_IMPROVE_SETTING_KEY = 'ChatImproveAiServiceCode';
+
+/** Get config by service code, or from app setting, or try common OpenAI codes. */
 async function getAIConfig(serviceCode?: string | null): Promise<{ config: ApiConfigRow; apiKey: string; baseUrl: string; model: string } | null> {
-  const codes = serviceCode?.trim()
-    ? [serviceCode.trim()]
-    : OPENAI_SERVICE_CODES;
+  let resolvedCode = (serviceCode ?? '').trim();
+  if (!resolvedCode) {
+    const fromSetting = await appSettingsService.getValue(CHAT_IMPROVE_SETTING_KEY);
+    resolvedCode = (fromSetting ?? '').trim();
+  }
+  const codes = resolvedCode ? [resolvedCode] : OPENAI_SERVICE_CODES;
   for (const code of codes) {
     const config = await apiConfigService.getByServiceCode(code);
     if (config?.apiKey) {

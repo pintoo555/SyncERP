@@ -5,6 +5,7 @@
 import { getRequest } from '../../config/db';
 import { config } from '../../config/env';
 import type { ContactRow, ContactCreateData } from './clients.types';
+import * as ultramsg from './ultramsg.service';
 
 const SCHEMA = config.db.schema || 'dbo';
 const CONTACT = `[${SCHEMA}].[utbl_ClientContact]`;
@@ -22,6 +23,7 @@ const CONTACT_COLUMNS = `
   c.Designation AS designation, c.Department AS department,
   c.MobileNumber AS mobileNumber, c.AlternateNumber AS alternateNumber,
   c.Email AS email, c.WhatsAppNumber AS whatsAppNumber,
+  c.WhatsAppVerified AS whatsAppVerified, c.WhatsAppVerifiedAt AS whatsAppVerifiedAt,
   c.ContactRoles AS contactRoles,
   c.IsPrimary AS isPrimary, c.IsActive AS isActive,
   c.InactiveDate AS inactiveDate, c.ReplacedByContactId AS replacedByContactId,
@@ -38,6 +40,8 @@ const CONTACT_JOINS = `
 function mapRow(r: any): ContactRow {
   return {
     ...r,
+    whatsAppVerified: !!r.whatsAppVerified,
+    whatsAppVerifiedAt: dateToIsoOrNull(r.whatsAppVerifiedAt),
     inactiveDate: dateToIsoOrNull(r.inactiveDate),
     createdOn: dateToIso(r.createdOn),
     updatedOn: dateToIsoOrNull(r.updatedOn),
@@ -96,6 +100,14 @@ export async function updateContact(id: number, data: ContactCreateData, userId:
   const existing = await getContact(id);
   if (!existing) throw new Error('Contact not found');
 
+  const newWhatsApp = data.whatsAppNumber ? data.whatsAppNumber.trim().slice(0, 20) : null;
+  const whatsAppChanged = (existing.whatsAppNumber || '').trim() !== (newWhatsApp || '').trim();
+
+  // Reject if WhatsApp number changed to a new non-empty value (new number is not yet verified)
+  if (newWhatsApp && whatsAppChanged) {
+    throw new Error('WhatsApp number must be verified before saving. Use the Verify button or clear the field.');
+  }
+
   if (data.isPrimary && !existing.isPrimary) {
     await clearPrimaryFlag(existing.clientId, userId);
   }
@@ -108,15 +120,19 @@ export async function updateContact(id: number, data: ContactCreateData, userId:
   req.input('mobile', data.mobileNumber ? data.mobileNumber.trim().slice(0, 20) : null);
   req.input('alternate', data.alternateNumber ? data.alternateNumber.trim().slice(0, 20) : null);
   req.input('email', data.email ? data.email.trim().slice(0, 200) : null);
-  req.input('whatsapp', data.whatsAppNumber ? data.whatsAppNumber.trim().slice(0, 20) : null);
+  req.input('whatsapp', newWhatsApp);
   req.input('isPrimary', data.isPrimary ? 1 : 0);
   req.input('roles', data.contactRoles ? data.contactRoles.trim().slice(0, 500) : null);
   req.input('updatedBy', userId);
+  req.input('clearVerified', whatsAppChanged ? 1 : 0);
   await req.query(`
     UPDATE ${CONTACT}
     SET ContactName = @name, Designation = @designation, Department = @department,
         MobileNumber = @mobile, AlternateNumber = @alternate,
-        Email = @email, WhatsAppNumber = @whatsapp, ContactRoles = @roles, IsPrimary = @isPrimary,
+        Email = @email, WhatsAppNumber = @whatsapp,
+        ContactRoles = @roles, IsPrimary = @isPrimary,
+        WhatsAppVerified = CASE WHEN @clearVerified = 1 THEN 0 ELSE WhatsAppVerified END,
+        WhatsAppVerifiedAt = CASE WHEN @clearVerified = 1 THEN NULL ELSE WhatsAppVerifiedAt END,
         UpdatedOn = GETDATE(), UpdatedBy = @updatedBy
     WHERE Id = @id
   `);
@@ -185,6 +201,59 @@ export async function suggestReplacement(contactId: number): Promise<ContactRow[
       c.ContactName
   `);
   return (result.recordset || []).map(mapRow);
+}
+
+/**
+ * Verify contact's WhatsApp number via ultramsg.com.
+ * If `numberOverride` is provided (from form), persist it first so DB matches what we verify.
+ */
+export async function verifyWhatsApp(contactId: number, numberOverride?: string): Promise<{ verified: boolean; error?: string }> {
+  const contact = await getContact(contactId);
+  if (!contact) return { verified: false, error: 'Contact not found' };
+
+  // If the caller passed a number (from the form), update the DB first
+  const numberToVerify = (numberOverride || contact.whatsAppNumber || '').trim();
+  if (!numberToVerify) return { verified: false, error: 'No WhatsApp number to verify' };
+
+  if (numberOverride && numberOverride.trim() !== (contact.whatsAppNumber || '').trim()) {
+    const upd = await getRequest();
+    upd.input('id', contactId);
+    upd.input('num', numberOverride.trim());
+    await upd.query(`
+      UPDATE ${CONTACT}
+      SET WhatsAppNumber = @num, WhatsAppVerified = 0, WhatsAppVerifiedAt = NULL, UpdatedOn = GETDATE()
+      WHERE Id = @id
+    `);
+  }
+
+  const chatId = ultramsg.phoneToChatId(numberToVerify);
+  if (!chatId) return { verified: false, error: 'Invalid WhatsApp number format' };
+
+  console.log(`[WhatsApp Verify] contactId=${contactId} number="${numberToVerify}" chatId="${chatId}"`);
+
+  const result = await ultramsg.checkWhatsAppNumber(chatId);
+
+  console.log(`[WhatsApp Verify] contactId=${contactId} API result: valid=${result.valid} error=${result.error ?? 'none'}`);
+
+  if (!result.valid) {
+    const rq = await getRequest();
+    rq.input('id', contactId);
+    await rq.query(`
+      UPDATE ${CONTACT}
+      SET WhatsAppVerified = 0, WhatsAppVerifiedAt = NULL, UpdatedOn = GETDATE()
+      WHERE Id = @id
+    `);
+    return { verified: false, error: result.error || 'Number is not on WhatsApp' };
+  }
+
+  const req = await getRequest();
+  req.input('id', contactId);
+  await req.query(`
+    UPDATE ${CONTACT}
+    SET WhatsAppVerified = 1, WhatsAppVerifiedAt = GETDATE(), UpdatedOn = GETDATE()
+    WHERE Id = @id
+  `);
+  return { verified: true };
 }
 
 async function clearPrimaryFlag(clientId: number, userId: number | null): Promise<void> {

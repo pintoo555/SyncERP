@@ -29,6 +29,7 @@ router.post('/folders/:path/mark-read', mailboxController.markMessagesRead);
 router.post('/folders/:path/mark-all-read', mailboxController.markAllRead);
 router.post('/folders/:path/delete', mailboxController.deleteMessages);
 router.post('/folders/:path/archive', mailboxController.archiveMessages);
+router.post('/folders/:path/archive-all', mailboxController.archiveAllInFolder);
 router.post('/send', (req, res, next) => {
   mailboxUpload(req, res, (err) => {
     if (err) return next(err);
